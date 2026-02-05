@@ -3,118 +3,80 @@ namespace ServiceImplementation.FireBaseRemoteConfig
 {
     using System;
     using System.Linq;
-    using System.Threading.Tasks;
+    using Cysharp.Threading.Tasks;
     using Firebase;
-    using Firebase.Extensions;
     using Firebase.RemoteConfig;
-    using GameFoundation.Scripts.Utilities.LogService;
-    using UnityEngine;
-    using Zenject;
+    using GameFoundation.DI;
+    using GameFoundation.Signals;
+    using UniT.Logging;
+    using UnityEngine.Scripting;
 
-    /// <summary>
-    /// We need to use MonoBehaviour to use Firebase Remote Config
-    /// </summary>
-    internal class FirebaseRemoteConfigMobile : MonoBehaviour, IRemoteConfig
+    public class FirebaseRemoteConfigMobile : IRemoteConfig, IInitializable
     {
-        [Inject] private readonly ILogService logger;
-        [Inject] private readonly SignalBus   signalBus;
-        public                    bool        IsConfigFetchedSucceed { get; private set; }
+        private readonly ILogger             logger;
+        private readonly SignalBus           signalBus;
+        private readonly RemoteConfigSetting remoteConfigSetting;
 
-        public void Initialize() { this.InitFirebase(); }
-
-        private void InitFirebase()
+        [Preserve]
+        public FirebaseRemoteConfigMobile(ILoggerManager loggerManager, SignalBus signalBus, RemoteConfigSetting remoteConfigSetting)
         {
-            this.logger.Log($"onelog: FirebaseRemoteConfig InitFirebase");
-            FirebaseApp.CheckAndFixDependenciesAsync().ContinueWith(task =>
-            {
-                var dependencyStatus = task.Result;
-
-                this.logger.Log($"onelog: FirebaseRemoteConfig CheckAndFixDependenciesAsync {dependencyStatus}");
-                if (dependencyStatus == DependencyStatus.Available)
-                {
-                    this.FetchDataAsync();
-                }
-                else
-                {
-                    this.logger.Error($"Could not resolve all Firebase dependencies: {dependencyStatus}");
-                }
-            });
+            this.logger              = loggerManager.GetLogger(this);
+            this.signalBus           = signalBus;
+            this.remoteConfigSetting = remoteConfigSetting;
         }
 
-        private Task FetchDataAsync()
-        {
-            var fetchTask =
-                FirebaseRemoteConfig.DefaultInstance.FetchAsync(
-                    TimeSpan.Zero);
+        public bool IsConfigFetchedSucceed { get; private set; }
 
-            return fetchTask.ContinueWithOnMainThread(this.FetchComplete);
+        public void Initialize()
+        {
+            this.InitializeAsync().Forget();
         }
 
-        private void FetchComplete(Task fetchTask)
+        private async UniTask InitializeAsync()
         {
-            if (fetchTask.IsCanceled)
+            this.logger.Info("Initializing");
+            FirebaseRemoteConfig.GetInstance(FirebaseApp.DefaultInstance); // This fix a magic bug, don't remove it
+            var dependencyStatus = await FirebaseApp.CheckAndFixDependenciesAsync();
+            if (dependencyStatus != DependencyStatus.Available)
             {
-                this.logger.Log($"onelog: FirebaseRemoteConfig Fetch canceled.");
+                this.logger.Error($"Could not resolve all Firebase dependencies: {dependencyStatus}");
+                return;
             }
-            else if (fetchTask.IsFaulted)
+            while (true)
             {
-                this.logger.Log($"onelog: FirebaseRemoteConfig Fetch encountered an error.");
-            }
-            else if (fetchTask.IsCompleted)
-            {
-                this.logger.Log($"onelog: FirebaseRemoteConfig Fetch completed successfully!");
-            }
-
-            var info = FirebaseRemoteConfig.DefaultInstance.Info;
-            this.logger.Log($"onelog: FirebaseRemoteConfig FetchComplete {info.LastFetchStatus}");
-
-            switch (info.LastFetchStatus)
-            {
-                case LastFetchStatus.Success:
-                    FirebaseRemoteConfig.DefaultInstance.ActivateAsync().ContinueWithOnMainThread(task =>
-                    {
-                        this.logger.Log($"onelog: FirebaseRemoteConfig Remote data loaded and ready (last fetch time {info.FetchTime}).");
-                        this.IsConfigFetchedSucceed = true;
-                        this.signalBus.Fire(new RemoteConfigFetchedSucceededSignal(this));
-                    });
-
+                try
+                {
+                    this.logger.Info("Fetching");
+                    await FirebaseRemoteConfig.DefaultInstance.FetchAsync(TimeSpan.Zero);
+                    await FirebaseRemoteConfig.DefaultInstance.ActivateAsync();
+                    this.logger.Info("Fetch succeeded");
                     break;
-                case LastFetchStatus.Failure:
-                    switch (info.LastFetchFailureReason)
-                    {
-                        case FetchFailureReason.Error:
-                            this.logger.Log($"onelog: FirebaseRemoteConfig Fetch failed for unknown reason");
-
-                            break;
-                        case FetchFailureReason.Throttled:
-                            this.logger.Log($"onelog: FirebaseRemoteConfig Fetch throttled until " + info.ThrottledEndTime);
-
-                            break;
-                        case FetchFailureReason.Invalid:
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
-
-                    break;
-                case LastFetchStatus.Pending:
-                    this.logger.Log($"onelog: FirebaseRemoteConfig Latest Fetch call still pending.");
-
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
+                }
+                catch (OperationCanceledException)
+                {
+                    this.logger.Info("Fetch cancelled");
+                }
+                catch (Exception e)
+                {
+                    this.logger.Info("Fetch error: " + e.Message);
+                    await UniTask.WaitForSeconds(this.remoteConfigSetting.FirebaseReloadInterval, ignoreTimeScale: true);
+                }
             }
+            await UniTask.SwitchToMainThread();
+            this.IsConfigFetchedSucceed = true;
+            this.signalBus.Fire(new RemoteConfigFetchedSucceededSignal(this));
         }
 
         #region Get Data Remote Config
-        public string GetRemoteConfigStringValue(string key, string defaultValue) { return !this.HasKey(key) ? defaultValue : FirebaseRemoteConfig.DefaultInstance.GetValue(key).StringValue; }
+
+        public string GetRemoteConfigStringValue(string key, string defaultValue)
+        {
+            return !this.HasKey(key) ? defaultValue : FirebaseRemoteConfig.DefaultInstance.GetValue(key).StringValue;
+        }
 
         public bool GetRemoteConfigBoolValue(string key, bool defaultValue)
         {
-            if (!this.HasKey(key) || !this.IsConfigFetchedSucceed)
-            {
-                return defaultValue;
-            }
+            if (!this.HasKey(key)) return defaultValue;
 
             var value = FirebaseRemoteConfig.DefaultInstance.GetValue(key).StringValue;
 
@@ -123,10 +85,7 @@ namespace ServiceImplementation.FireBaseRemoteConfig
 
         public long GetRemoteConfigLongValue(string key, long defaultValue)
         {
-            if (!this.HasKey(key) || !this.IsConfigFetchedSucceed)
-            {
-                return defaultValue;
-            }
+            if (!this.HasKey(key)) return defaultValue;
 
             var value = FirebaseRemoteConfig.DefaultInstance.GetValue(key).StringValue;
 
@@ -135,10 +94,7 @@ namespace ServiceImplementation.FireBaseRemoteConfig
 
         public double GetRemoteConfigDoubleValue(string key, double defaultValue)
         {
-            if (!this.HasKey(key) || !this.IsConfigFetchedSucceed)
-            {
-                return defaultValue;
-            }
+            if (!this.HasKey(key)) return defaultValue;
 
             var value = FirebaseRemoteConfig.DefaultInstance.GetValue(key).StringValue;
 
@@ -147,10 +103,7 @@ namespace ServiceImplementation.FireBaseRemoteConfig
 
         public int GetRemoteConfigIntValue(string key, int defaultValue)
         {
-            if (!this.HasKey(key) || !this.IsConfigFetchedSucceed)
-            {
-                return defaultValue;
-            }
+            if (!this.HasKey(key)) return defaultValue;
 
             var value = FirebaseRemoteConfig.DefaultInstance.GetValue(key).StringValue;
 
@@ -159,17 +112,20 @@ namespace ServiceImplementation.FireBaseRemoteConfig
 
         public float GetRemoteConfigFloatValue(string key, float defaultValue)
         {
-            if (!this.HasKey(key) || !this.IsConfigFetchedSucceed)
-            {
-                return defaultValue;
-            }
+            if (!this.HasKey(key)) return defaultValue;
 
             var value = FirebaseRemoteConfig.DefaultInstance.GetValue(key).StringValue;
 
             return float.TryParse(value, out var result) ? result : defaultValue;
         }
 
-        private bool HasKey(string key) { return FirebaseRemoteConfig.DefaultInstance.Keys != null && FirebaseRemoteConfig.DefaultInstance.Keys.Contains(key); }
+        private bool HasKey(string key)
+        {
+            return this.IsConfigFetchedSucceed
+                && FirebaseRemoteConfig.DefaultInstance.Keys != null
+                && FirebaseRemoteConfig.DefaultInstance.Keys.Contains(key);
+        }
+
         #endregion
     }
 }

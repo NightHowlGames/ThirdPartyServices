@@ -7,9 +7,10 @@ namespace Core.AnalyticServices
     using Core.AnalyticServices.Data;
     using Core.AnalyticServices.Signal;
     using Core.AnalyticServices.Tools;
+    using GameFoundation.Signals;
+    using UniT.Extensions;
     using UnityEngine;
-    using Utilities.Extension;
-    using Zenject;
+    using UnityEngine.Scripting;
 
     public interface IAnalyticServices
     {
@@ -40,22 +41,21 @@ namespace Core.AnalyticServices
 
         public UserProperties UserProperties { get; }
 
+        [Preserve]
         public AnalyticServices(DeviceInfo deviceInfo, SignalBus signalBus)
         {
             this.deviceInfo         = deviceInfo;
             this.signalBus          = signalBus;
-            this.UserProperties     = new UserProperties(this);
-            this.eventTrackedSignal = new EventTrackedSignal();
-            this.started            = new TaskCompletionSource<bool>();
+            this.UserProperties     = new(this);
+            this.eventTrackedSignal = new();
+            this.started            = new();
             //todo need to refactor this
-           
         }
-
 
         void IAnalyticServices.Start()
         {
-            if(this.started.Task.Status == TaskStatus.RanToCompletion) return;
-            
+            if (this.started.Task.Status == TaskStatus.RanToCompletion) return;
+
             this.Track(new GameLaunched
             {
                 InstallId   = this.deviceInfo.InstallId,
@@ -64,11 +64,10 @@ namespace Core.AnalyticServices
 
             this.deviceInfo.ScrapeDeviceData();
             this.SetupUserProperties();
-            
+
             this.UserProperties.PropertyChanged += (sender, args) =>
             {
-                if (args.PropertyName == nameof(UserProperties.UserId))
-                    this.signalBus.Fire(new SetUserIdSignal(){UserId = this.UserProperties.UserId});
+                if (args.PropertyName == nameof(this.UserProperties.UserId)) this.signalBus.Fire(new SetUserIdSignal() { UserId = this.UserProperties.UserId });
             };
             this.started.SetResult(true);
         }
@@ -77,12 +76,12 @@ namespace Core.AnalyticServices
         {
             await this.started.Task;
             this.eventTrackedSignal.TrackedEvent = trackedEvent;
-            this.eventTrackedSignal.ChangedProps = this.UserProperties.ChangedProps.Count > 0 ? this.UserProperties.ChangedProps.Copy() : null;
+            this.eventTrackedSignal.ChangedProps = this.UserProperties.ChangedProps.Count > 0 ? this.UserProperties.ChangedProps.ToDictionary() : null;
             this.signalBus.Fire(this.eventTrackedSignal);
 
             this.UserProperties.ChangedProps.Clear();
         }
-        
+
         private void SetupUserProperties()
         {
             // this.UserProperties.GameEnvironment  = this.Config.Environment ? "develop" : "production";
@@ -96,15 +95,15 @@ namespace Core.AnalyticServices
             this.UserProperties.DeviceMake     = this.deviceInfo.Make;
             this.UserProperties.DeviceFamily   = this.deviceInfo.Family;
 
-#if UNITY_IOS && !UNITY_EDITOR
-            this.UserProperties.DeviceVendorId      = this.deviceInfo.Idfv;
+            #if UNITY_IOS && !UNITY_EDITOR
+            this.UserProperties.DeviceVendorId = this.deviceInfo.Idfv;
             this.UserProperties.DeviceAdvertisingId = this.deviceInfo.Idfa;
-#elif UNITY_ANDROID && !UNITY_EDITOR
-            this.UserProperties.DeviceVendorId      = this.deviceInfo.AndroidId;
+            #elif UNITY_ANDROID && !UNITY_EDITOR
+            this.UserProperties.DeviceVendorId = this.deviceInfo.AndroidId;
             this.UserProperties.DeviceAdvertisingId = this.deviceInfo.Gaid;
-#elif UNITY_WSA_10_0 && !UNITY_EDITOR
+            #elif UNITY_WSA_10_0 && !UNITY_EDITOR
             this.UserProperties.DeviceAppHardwareId = this.deviceInfo.ASHWID;
-#endif
+            #endif
 
             this.UserProperties.PlatformName    = this.deviceInfo.Platform;
             this.UserProperties.PlatformVersion = this.deviceInfo.OSVersion;
@@ -115,11 +114,9 @@ namespace Core.AnalyticServices
             this.UserProperties.GameIsTestflight = this.deviceInfo.IsTestflightBuild;
             this.UserProperties.GameInstallMode  = Application.installMode.ToString().ToLowerInvariant();
 
-
             this.UserProperties.InstallId = this.deviceInfo.InstallId;
 
-            if (!PlayerPrefs.HasKey(DeviceInfo.InstallDateKey))
-                return;
+            if (!PlayerPrefs.HasKey(DeviceInfo.InstallDateKey)) return;
 
             var installDate         = PlayerPrefs.GetString(DeviceInfo.InstallDateKey);
             var installDateTime     = Convert.ToDateTime(installDate, CultureInfo.InvariantCulture);

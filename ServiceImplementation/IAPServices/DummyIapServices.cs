@@ -1,45 +1,39 @@
 namespace ServiceImplementation.IAPServices
 {
+    using System;
     using System.Collections.Generic;
-    using Cysharp.Threading.Tasks;
-    using UnityEngine.Purchasing;
+    using UnityEngine.Scripting;
 
+    [Preserve]
     public class DummyIapServices : IIapServices
     {
-
-        public UniTask Initialize(Dictionary<string, ProductType> iapPacks, string environment = "production")
+        public void InitIapServices(Dictionary<string, IAPModel> iapPack, string environment = "production")
         {
-            return UniTask.CompletedTask;
-        }
-        
-        public UniTask PurchaseProduct(string productId)
-        {
-            return UniTask.CompletedTask;
-        }
-        
-        public Product FindProduct(string productId)
-        {
-            return null;
-        }
-        
-        public UniTask<Product> FetchProduct(string productId)
-        {
-            return UniTask.FromResult<Product>(null);
-        }
-        
-        public string GetLocalizedPriceString(string productId, string defaultValue = "")
-        {
-            return defaultValue;
         }
 
-        public decimal GetLocalizedPrice(string productId, decimal defaultValue = 0)
+        public void BuyProductID(string productId, Action<string, int> onComplete = null, Action<string> onFailed = null)
         {
-            return defaultValue;
+            onComplete?.Invoke(productId, 1);
         }
 
-        public bool IsProductAvailable(string productId)
+        public string GetPriceById(string productId, string defaultPrice)
+        {
+            return $"{defaultPrice}";
+        }
+
+        public void RestorePurchases(Action onComplete, Action onFailed = null)
+        {
+            onComplete?.Invoke();
+        }
+
+        public bool IsProductOwned(string productId)
         {
             return true;
+        }
+
+        public ProductData GetProductData(string productId)
+        {
+            return new();
         }
     }
 }

@@ -13,25 +13,39 @@
         public const string EnableNativeAD               = "enable_native_ad";
         public const string EnableCollapsibleBanner      = "enable_collapsible_banner";
         public const string IntervalLoadAds              = "interval_load_ads";
+        public const string EnableAds                    = "enable_ads";
 
         #endregion
 
         #region AOA
 
+        public const string AOALoadingThreshold       = "aoa_loading_threshold";
         public const string MinPauseSecondToShowAoaAD = "min_pause_second_to_show_aoa_ad";
         public const string AoaStartSession           = "aoa_start_session";
         public const string UseAoaAdmob               = "use_aoa_admob";
+        public const string AoaAdResumeStartLevel     = "aoa_resume_start_level";
+        public const string AoaAdResumeStartSession   = "aoa_resume_start_session";
+
+        #if BRAVESTARS
+        public const string UseAoaResume = "use_aoa_resume";
+        public const string AoaFirstOpen = "show_open_ads_first_open";
+        public const string AoaStartGame = "show_open_ads_start_game";
+        #endif
 
         #endregion
 
         #region Interstitial
 
-        public const string InterstitialADInterval            = "interstitial_ad_interval";
-        public const string InterstitialADStartLevel          = "interstitial_ad_start_level";
-        public const string InterstitialAdActivePlacements    = "interstitial_ad_active_placements";
-        public const string DelayFirstIntersADInterval        = "delay_first_inters_ad_interval";
-        public const string DelayFirstIntersNewSession        = "delay_first_inters_new_session";
-        public const string ResetInterAdIntervalAfterRewardAd = "reset_inter_ad_interval_after_reward_ad";
+        public const string InterstitialADInterval                 = "interstitial_ad_interval";
+        public const string InterstitialADStartLevel               = "interstitial_ad_start_level";
+        public const string InterstitialAdActivePlacements         = "interstitial_ad_active_placements";
+        public const string DelayFirstIntersADInterval             = "delay_first_inters_ad_interval";
+        public const string DelayFirstIntersNewSession             = "delay_first_inters_new_session";
+        public const string ResetInterAdIntervalAfterRewardAd      = "reset_inter_ad_interval_after_reward_ad";
+        public const string IsIntersInsteadAoaResume               = "is_inters_instead_aoa_resume";
+        public const string LevelConditionInterstitialTimeGap      = "level_condition_interstitial_time_gap";
+        public const string LevelConditionInterstitialAppOpenDelay = "level_condition_interstitial_appopen_delay";
+        public const string LevelConditionInterRwTimeGap           = "level_condition_inter_rw_time_gap";
 
         #endregion
 
@@ -43,10 +57,46 @@
 
         #region Collapsible
 
-        public const string CollapsibleBannerADInterval             = "colapsible_banner_ad_interval";
-        public const string EnableCollapsibleBannerFallback         = "enable_collapsible_banner_fallback";
-        public const string CollapsibleBannerAutoRefreshEnabled     = "collapsible_banner_auto_refresh_enabled";
-        public const string CollapsibleBannerExpandOnRefreshEnabled = "collapsible_banner_expand_on_refresh_enabled";
+        public const string CollapsibleBannerADInterval              = "colapsible_banner_ad_interval";
+        public const string CollapsibleBannerExpandOnRefreshInterval = "collapsible_banner_expand_on_refresh_interval";
+        public const string EnableCollapsibleBannerFallback          = "enable_collapsible_banner_fallback";
+        public const string CollapsibleBannerAutoRefreshEnabled      = "collapsible_banner_auto_refresh_enabled";
+        public const string CollapsibleBannerExpandOnRefreshEnabled  = "collapsible_banner_expand_on_refresh_enabled";
+
+        #endregion
+
+        #region MREC
+
+        public const string EnableMrecRefreshInterval  = "enable_mrec_refresh_interval";
+        public const string MrecRefreshInterval        = "mrec_refresh_interval";
+        public const string EnableCollapsibleMrec      = "enable_collapsible_mrec";
+        public const string CollapsibleMrecInterval    = "collapsible_mrec_interval";
+        public const string CollapsibleMrecDisplayTime = "collapsible_mrec_display_time";
+
+        #endregion
+
+        #region Native
+
+        public const string NativeOverlayInterEnable   = "native_overlay_inter_enable"; // overlay
+        public const string NativeInterEnable          = "native_inter_enable";
+        public const string ShowNativeInterAfterInter  = "show_native_inter_after_inter";
+        public const string NativeInterCappingTime     = "native_inter_capping_time";
+        public const string NativeInterCountdown       = "native_inter_countdown";
+        public const string NativeInterShowAdsComplete = "native_inter_show_ads_complete";
+        public const string EnableNativeCollapse       = "enable_native_collapsible";
+        public const string NativeCollapseCloseTime    = "native_collapse_close_time";
+        public const string NativeCollapseLoad         = "native_collapse_load";
+
+        #endregion
+
+        #if GADSME
+        public const string EnableGadsme = "enable_gadsme";
+
+        #endif
+
+        #region MiscConfig
+
+        public const string TesterEmails = "tester_emails";
 
         #endregion
     }

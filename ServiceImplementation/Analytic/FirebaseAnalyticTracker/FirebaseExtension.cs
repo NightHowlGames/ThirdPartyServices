@@ -7,37 +7,27 @@ namespace ServiceImplementation.FirebaseAnalyticTracker
     /// </summary>
     public static class FirebaseExtension
     {
-        private static readonly Regex Reg = new Regex("^[a-zA-Z0-9_]+$");
-
         /// <summary>
         /// Based on the firebase analytics names requirements
         /// https://firebase.google.com/docs/reference/cpp/group/event-names
         /// </summary>
         /// <param name="str"></param>
-        /// <param name="error"></param>
         /// <returns></returns>
-        public static bool IsNameValid(this string str, out string error)
+        public static string IsNameValid(this string str)
         {
-            error = null;
-            if (str == null)
-            {
-                error = "Name is null";
-                return false;
-            }
+            var reg = new Regex("^[a-zA-Z0-9_]+$");
 
-            if (str.Length > 40)
-                error = "Name too long";
+            if (str == null) return "Name is null";
 
-            if (!char.IsLetter(str[0]))
-                error += "\nName must start with a letter";
+            if (str.Length > 40) return "Name is too long";
 
-            if (!Reg.IsMatch(str))
-                error += "\nName contains invalid characters";
+            if (!char.IsLetter(str[0])) return "Name does not start with letter";
 
-            if (str.StartsWith("firebase_") || str.StartsWith("google_") || str.StartsWith("ga_"))
-                error += "\nName starts with reserved prefix from google";
+            if (!reg.IsMatch(str)) return "Name contains special characters";
 
-            return string.IsNullOrEmpty(error);
+            if (str.Equals("firebase_") || str.Equals("google_") || str.Equals("ga_")) return "Name is reserved from google";
+
+            return "Valid";
         }
 
         /// <summary>
@@ -46,20 +36,12 @@ namespace ServiceImplementation.FirebaseAnalyticTracker
         /// </summary>
         /// <param name="obj"></param>
         /// <returns></returns>
-        public static bool IsParameterValueValid(this object obj, out string error)
+        public static string IsParameterValueValid(this object obj)
         {
-            error = null;
-            if (obj == null)
-            {
-                error = "Parameter is null";
-                return false;
-            }
+            if (obj == null) return "Valid";
 
-            string str = obj.ToString();
-            if (str.Length <= 100) return true;
-
-            error = "Parameter too long";
-            return false;
+            var str = obj.ToString();
+            return str.Length <= 100 ? "Valid" : "Parameter too long";
         }
     }
 }

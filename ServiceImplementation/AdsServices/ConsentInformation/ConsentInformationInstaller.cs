@@ -1,3 +1,4 @@
+#if GDK_ZENJECT
 namespace ServiceImplementation.AdsServices.ConsentInformation
 {
     using Zenject;
@@ -6,15 +7,13 @@ namespace ServiceImplementation.AdsServices.ConsentInformation
     {
         public override void InstallBindings()
         {
+            this.Container.BindInterfacesAndSelfTo<AppTrackingServices>().AsCached().NonLazy();
 #if ADMOB
             this.Container.BindInterfacesAndSelfTo<UmpConsentInformation>().AsCached().NonLazy();
 #else
             this.Container.BindInterfacesAndSelfTo<DummyConsentInformation>().AsCached().NonLazy();
 #endif
         }
-
-        private void WaitToRequest()
-        {
-        }
     }
 }
+#endif

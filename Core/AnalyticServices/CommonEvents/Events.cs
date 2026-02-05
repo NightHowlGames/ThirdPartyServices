@@ -41,7 +41,7 @@ namespace Core.AnalyticServices.CommonEvents
     /// Use this class to track location changes (screen in game).
     /// </remarks>
     [Serializable]
-    internal class ScreenLocationChange : IEvent
+    internal class LocationChange : IEvent
     {
         /// <summary>
         /// Next (current) location (screen).
@@ -54,16 +54,17 @@ namespace Core.AnalyticServices.CommonEvents
         public string LocationPrev;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="ScreenLocationChange"/> class.
+        /// Initializes a new instance of the <see cref="LocationChange"/> class.
         /// </summary>
         /// <param name="locationNext">Next (current) location (screen).</param>
         /// <param name="locationPrev">Previous location (screen).</param>
-        public ScreenLocationChange(string locationNext, string locationPrev)
+        public LocationChange(string locationNext, string locationPrev)
         {
             this.LocationNext = locationNext;
             this.LocationPrev = locationPrev;
         }
     }
+
     #endregion
 
     /*
@@ -76,7 +77,7 @@ namespace Core.AnalyticServices.CommonEvents
     /// An event automatically fired when Unity reports a focus in.
     /// todo - acquire reporting from native and not unity
     /// </summary>
-    public sealed class FocusIn : IEvent
+    internal sealed class FocusIn : IEvent
     {
     }
 
@@ -84,14 +85,14 @@ namespace Core.AnalyticServices.CommonEvents
     /// An event automatically fired when Unity reports a focus out.
     /// todo - acquire reporting from native and not unity
     /// </summary>
-    public sealed class FocusOut : IEvent
+    internal sealed class FocusOut : IEvent
     {
     }
 
     /// <summary>
     /// An event automatically fired every 30 seconds (default)
     /// </summary>
-    public sealed class Heartbeat : IEvent
+    internal sealed class Heartbeat : IEvent
     {
     }
 
@@ -125,8 +126,8 @@ namespace Core.AnalyticServices.CommonEvents
     internal sealed class SessionStarted : GameLaunched
     {
     }
-    #endregion
 
+    #endregion
 
     /*
      * Service Status
@@ -143,7 +144,7 @@ namespace Core.AnalyticServices.CommonEvents
         /// <summary>
         /// Name of the service
         /// </summary>
-        public String ServiceName;
+        public string ServiceName;
     }
 
     /// <summary>
@@ -171,7 +172,8 @@ namespace Core.AnalyticServices.CommonEvents
         /// <summary>
         /// Error message if any.
         /// </summary>
-        public String Error;
+        public string Error;
     }
+
     #endregion
 }

@@ -6,7 +6,9 @@ namespace Core.AnalyticServices.CommonEvents
     /*
      * Purchasing
      */
+
     #region Purchasing
+
     /// <summary>
     /// Default purchase event class which contains properties common to all purchase events
     /// </summary>
@@ -84,6 +86,22 @@ namespace Core.AnalyticServices.CommonEvents
         public double Price;
 
         /// <summary>
+        /// real price of the product after discounts, taxes, etc.
+        /// </summary>
+        public double Revenue
+        {
+            get
+            {
+#if UNITY_IOS
+                return this.Price * 0.67f;
+#elif UNITY_ANDROID
+                return this.Price * 0.63f;
+#endif
+                return this.Price;
+            }
+        }
+
+        /// <summary>
         /// Identify if it's a featured item
         /// </summary>
         public bool Featured;
@@ -153,7 +171,7 @@ namespace Core.AnalyticServices.CommonEvents
     [Serializable]
     public sealed class IapFailedRestore : IapEvent
     {
-        public String ErrorMessage;
+        public string ErrorMessage;
     }
 
     /// <summary>
@@ -180,5 +198,6 @@ namespace Core.AnalyticServices.CommonEvents
     public sealed class IapRestorationProcessDidFail : IEvent
     {
     }
+
     #endregion
 }

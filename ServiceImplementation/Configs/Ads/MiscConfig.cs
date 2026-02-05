@@ -1,8 +1,10 @@
 namespace ServiceImplementation.Configs.Ads
 {
     using System;
+    using GameFoundation.DI;
+    using GameFoundation.Signals;
     using ServiceImplementation.FireBaseRemoteConfig;
-    using Zenject;
+    using UnityEngine.Scripting;
 
     public class MiscConfig : IInitializable, IDisposable
     {
@@ -16,6 +18,7 @@ namespace ServiceImplementation.Configs.Ads
 
         #endregion
 
+        [Preserve]
         public MiscConfig(SignalBus signalBus, IRemoteConfig remoteConfig, RemoteConfigSetting remoteConfigSetting)
         {
             this.signalBus           = signalBus;
@@ -31,9 +34,14 @@ namespace ServiceImplementation.Configs.Ads
             this.InitDefaultValue();
         }
 
-        public void Dispose() { this.signalBus.Unsubscribe<RemoteConfigFetchedSucceededSignal>(this.OnFetchRemoteConfig); }
+        public void Dispose()
+        {
+            this.signalBus.Unsubscribe<RemoteConfigFetchedSucceededSignal>(this.OnFetchRemoteConfig);
+        }
 
-        private void InitDefaultValue() { }
+        private void InitDefaultValue()
+        {
+        }
 
         private void OnFetchRemoteConfig()
         {

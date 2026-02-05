@@ -11,20 +11,15 @@
     }
 
     [Serializable]
-    public class StringAdIdSerializableDictionary : SerializableDictionary<string, AdId>
+    public class StringAdIdSerializableDictionary : SerializableDictionary<string, Ads.CrossPlatformValue>
     {
     }
 
     [Serializable]
-    public class Dictionary_AdPlacement_AdId : SerializableDictionary<AdPlacement, AdId>
+    public class Dictionary_AdPlacement_AdId : SerializableDictionary<AdPlacement, Ads.CrossPlatformValue>
     {
     }
-    
-    [Serializable]
-    public class Dictionary_AdViewPosition_AdId : SerializableDictionary<AdViewPosition, AdId>
-    {
-    }
-    
+
     [Serializable]
     public class Dictionary_AdPlacement_CappingTime : SerializableDictionary<string, CustomCappingTime>
     {

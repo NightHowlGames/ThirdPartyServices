@@ -1,5 +1,6 @@
 ﻿namespace Core.AnalyticServices.Editor
 {
+    using Models;
     using UnityEditor;
     using UnityEngine.UIElements;
 
@@ -7,6 +8,7 @@
     {
         protected override string ConfigName { get; } = "AnalyticConfig";
         protected override string ConfigPath { get; } = "GameConfigs";
+
         public override VisualElement LoadView()
         {
             var analyticConfigTemplate = EditorGUIUtility.Load("Packages/com.gdk.3rd/Core/AnalyticServices/Editor/AnalyticConfigEditor.uxml") as VisualTreeAsset;

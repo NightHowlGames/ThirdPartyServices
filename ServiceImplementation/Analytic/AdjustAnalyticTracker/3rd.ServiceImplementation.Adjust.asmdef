@@ -3,9 +3,11 @@
   "rootNamespace": "",
   "references": [
     "3rdCore.Analytic",
-    "Zenject-Signals",
+    "GameFoundation.Signals",
     "GameFoundation.Utilities",
-    "AdjustSDK"
+    "AdjustSdk.Scripts",
+    "AdjustSdk.Editor",
+    "TheOne.Logging"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

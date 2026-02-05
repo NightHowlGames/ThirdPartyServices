@@ -1,30 +1,31 @@
 #if ADMOB
 namespace ServiceImplementation.AdsServices.ConsentInformation
 {
-    using GameFoundation.Scripts.Utilities.LogService;
     using GoogleMobileAds.Ump.Api;
-    using Zenject;
+    using UniT.Logging;
+    using UnityEngine.Scripting;
 
-    public class UmpConsentInformation : IConsentInformation, IInitializable
+    public class UmpConsentInformation : IConsentInformation
     {
         #region Inject
 
-        private readonly ILogService        logService;
+        private readonly ILogger logService;
+
+        [Preserve]
+        public UmpConsentInformation(ILoggerManager loggerManager)
+        {
+            this.logService = loggerManager.GetLogger(this);
+        }
 
         #endregion
 
-        public UmpConsentInformation(ILogService logService)
-        {
-            this.logService         = logService;
-        }
-        
-        public void Initialize()
-        {
-            this.Request();
-        }
+        private bool isRequesting;
 
-        public void Request()
+        public bool CanRequestAds() => ConsentInformation.CanRequestAds();
+
+        public void RequestConsent()
         {
+            this.isRequesting = true;
             var request = new ConsentRequestParameters
             {
                 TagForUnderAgeOfConsent = false
@@ -33,29 +34,32 @@ namespace ServiceImplementation.AdsServices.ConsentInformation
             ConsentInformation.Update(request, this.OnConsentInfoUpdated);
         }
 
+        public bool IsRequestingConsent() => this.isRequesting;
+
         private void OnConsentInfoUpdated(FormError consentError)
         {
             if (consentError != null)
             {
-                // Handle the error.
-                this.logService.Error($"onelog: OnConsentInfoUpdated Error {consentError.Message}");
+                this.logService.Error($"OnConsentInfoUpdated {consentError.Message}");
+                this.isRequesting = false;
                 return;
             }
 
-#if !GOOGLE_MOBILE_ADS_BELLOW_8_5_2
+            this.logService.Info("Before LoadAndShowConsentFormIfRequired");
             ConsentForm.LoadAndShowConsentFormIfRequired(formError =>
             {
+                this.isRequesting = false;
+
                 if (formError != null)
                 {
                     // Consent gathering failed.
-                    this.logService.Error($"onelog: ConsentForm.LoadAndShowConsentFormIfRequired Error {formError.Message}");
+                    this.logService.Error($"LoadAndShowConsentFormIfRequired Fail: {formError.Message}");
                     return;
                 }
 
                 // Consent has been gathered.
-                this.logService.Log($"onelog: ConsentForm.LoadAndShowConsentFormIfRequired Success");
+                this.logService.Info($"LoadAndShowConsentFormIfRequired Success, Status: {ConsentInformation.ConsentStatus}");
             });
-#endif
         }
     }
 }

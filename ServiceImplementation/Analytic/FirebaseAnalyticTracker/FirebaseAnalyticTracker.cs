@@ -6,24 +6,31 @@
     using System.Threading.Tasks;
     using Core.AnalyticServices;
     using Core.AnalyticServices.Data;
+    using GameFoundation.Signals;
     using Newtonsoft.Json;
-    using UnityEngine;
-    using Zenject;
+    using UniT.Logging;
+    using UnityEngine.Scripting;
 
     public class FirebaseAnalyticTracker : BaseTracker
     {
-        private readonly   AnalyticsEventCustomizationConfig customizationConfig;
-        protected override TaskCompletionSource<bool>        TrackerReady         { get; } = new TaskCompletionSource<bool>();
-        protected override Dictionary<Type, EventDelegate>   CustomEventDelegates { get; }
+        private readonly AnalyticsEventCustomizationConfig customizationConfig;
 
-        public FirebaseAnalyticTracker(SignalBus signalBus, AnalyticConfig analyticConfig, AnalyticsEventCustomizationConfig customizationConfig) : base(signalBus, analyticConfig)
+        [Preserve]
+        public FirebaseAnalyticTracker(
+            SignalBus                         signalBus,
+            AnalyticConfig                    analyticConfig,
+            ILoggerManager                    loggerManager,
+            AnalyticsEventCustomizationConfig customizationConfig
+        ) : base(signalBus, analyticConfig, loggerManager)
         {
             this.customizationConfig = customizationConfig;
         }
 
-        protected override HashSet<Type>              IgnoreEvents    => this.customizationConfig.IgnoreEvents;
-        protected override HashSet<string>            IncludeEvents   => this.customizationConfig.IncludeEvents;
-        protected override Dictionary<string, string> CustomEventKeys => this.customizationConfig.CustomEventKeys;
+        protected override TaskCompletionSource<bool>      TrackerReady         { get; } = new();
+        protected override Dictionary<Type, EventDelegate> CustomEventDelegates { get; }
+        protected override HashSet<Type>                   IgnoreEvents         => this.customizationConfig.IgnoreEvents;
+        protected override HashSet<string>                 IncludeEvents        => this.customizationConfig.IncludeEvents;
+        protected override Dictionary<string, string>      CustomEventKeys      => this.customizationConfig.CustomEventKeys;
 
         protected override Task TrackerSetup()
         {
@@ -34,33 +41,36 @@
             return this.TrackerReady.Task;
         }
 
-        protected override void SetUserId(string userId) { FirebaseAnalytics.SetUserId(userId); }
+        protected override void SetUserId(string userId)
+        {
+            FirebaseAnalytics.SetUserId(userId);
+        }
 
-        protected override void OnChangedProps(Dictionary<string, object> changedProps) { FirebaseAnalytics.SetUserProperty(changedProps); }
+        protected override void OnChangedProps(Dictionary<string, object> changedProps)
+        {
+            FirebaseAnalytics.SetUserProperty(changedProps);
+        }
 
         protected override void OnEvent(string name, Dictionary<string, object> data)
         {
-            if (!name.IsNameValid(out var error))
+            if (!name.IsNameValid().Equals("Valid"))
             {
-                Debug.LogError($"Firebase: Event name error: {name} {error}");
+                this.logger.Error($"Event name error: {name} {name.IsNameValid()}");
 
-                if (this.analyticConfig.firebaseStrictMode) return;
+                return;
             }
 
             if (data == null)
             {
                 FirebaseAnalytics.LogEvent(name);
-                if (this.analyticConfig.debugMode) Debug.Log($"Firebase: OnEvent - {name}");
+                this.logger.Info($"{name}");
 
                 return;
             }
 
-            if (!this.CheckConventions(data))
-            {
-                if (this.analyticConfig.firebaseStrictMode) return;
-            }
+            if (!this.CheckConventions(data)) return;
 
-            if (this.analyticConfig.debugMode) Debug.Log($"Firebase: OnEvent - {name} - {JsonConvert.SerializeObject(data)}");
+            this.logger.Info($"{name} - {JsonConvert.SerializeObject(data)}");
             switch (data.Count)
             {
                 case > 1:
@@ -108,18 +118,18 @@
 
         private bool CheckConventions(Dictionary<string, object> data)
         {
-            foreach (KeyValuePair<string, object> entry in data)
+            foreach (var entry in data)
             {
-                if (!entry.Key.IsNameValid(out var error))
+                if (!entry.Key.IsNameValid().Equals("Valid"))
                 {
-                    Debug.LogError($"Parameter name error: {entry.Key} {error}");
+                    this.logger.Error($"Parameter name error: {entry} {entry.Key.IsNameValid()}");
 
                     return false;
                 }
 
-                if (!entry.Value.IsParameterValueValid(out error))
+                if (!entry.Value.IsParameterValueValid().Equals("Valid"))
                 {
-                    Debug.LogError($"Parameter {entry.Key} value error: {entry.Value} {error}");
+                    this.logger.Error($"Parameter value error: {entry.Value} {entry.Value.IsParameterValueValid()}");
 
                     return false;
                 }

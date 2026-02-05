@@ -6,43 +6,24 @@ namespace Core.AnalyticServices.Data
     using Core.AnalyticServices.Tools;
     using UnityEngine;
     using Utilities.Utils;
-    using Zenject;
 
-    /// <summary>
-    /// todo
-    /// </summary>
     internal sealed class SessionController : MonoBehaviour
     {
         private IAnalyticServices analyticServices;
         private DeviceInfo        deviceInfo;
 
-        /// <summary>
-        /// 
-        /// </summary>
         public string SessionId { get; private set; }
 
         private const float  HeartbeatInterval = 30f;
         private const double SessionTimeout    = 600000; //  10 min, todo - make config controllable
         private       double focusOutTime      = double.NaN;
 
-        private WaitForSecondsRealtime waitForSecondsRealtime;
-        private Heartbeat              heartbeatEvent;
-        private FocusOut               focusOutEvent;
-        private FocusIn                focusInEvent;
-
-        [Inject]
-        public void Init(IAnalyticServices analyticServicesParam, DeviceInfo deviceInfoParam)
+        public void Construct(IAnalyticServices analyticServices, DeviceInfo deviceInfo)
         {
-            this.analyticServices  = analyticServicesParam;
-            this.deviceInfo        = deviceInfoParam;
-            waitForSecondsRealtime = new WaitForSecondsRealtime(HeartbeatInterval);
-            heartbeatEvent         = new Heartbeat();
-            focusInEvent           = new FocusIn();
-            focusOutEvent          = new FocusOut();
-
-
-
+            this.analyticServices = analyticServices;
+            this.deviceInfo       = deviceInfo;
         }
+
         private void Start()
         {
             this.SessionId = Guid.NewGuid().ToString("N");
@@ -58,11 +39,10 @@ namespace Core.AnalyticServices.Data
 
         private IEnumerator Heartbeat()
         {
-
             while (true)
             {
-                yield return waitForSecondsRealtime;
-                this.analyticServices.Track(heartbeatEvent);
+                yield return new WaitForSecondsRealtime(HeartbeatInterval);
+                this.analyticServices.Track(new Heartbeat());
             }
         }
 
@@ -72,25 +52,20 @@ namespace Core.AnalyticServices.Data
 
             if (hasFocus)
             {
-                if (double.IsNaN(this.focusOutTime))
-                    return;
+                if (double.IsNaN(this.focusOutTime)) return;
 
                 var deltaFocusTime = focusTime - this.focusOutTime;
                 this.focusOutTime = double.NaN;
 
                 if (deltaFocusTime is > SessionTimeout or < 0)
-                {
                     this.Start();
-                }
                 else
-                {
-                    this.analyticServices.Track(focusInEvent);
-                }
+                    this.analyticServices.Track(new FocusIn());
             }
             else
             {
                 this.focusOutTime = focusTime;
-                this.analyticServices.Track(focusOutEvent);
+                this.analyticServices.Track(new FocusOut());
             }
         }
     }

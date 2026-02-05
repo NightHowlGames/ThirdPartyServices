@@ -1,0 +1,497 @@
+#if YANDEX
+namespace ServiceImplementation.AdsServices.Yandex
+{
+    using System;
+    using System.Collections.Generic;
+    using Core.AdsServices;
+    using Core.AdsServices.Signals;
+    using Core.AnalyticServices;
+    using Core.AnalyticServices.CommonEvents;
+    using Core.AnalyticServices.Signal;
+    using GameFoundation.DI;
+    using Newtonsoft.Json;
+    using ServiceImplementation.Configs;
+    using ServiceImplementation.Configs.Ads;
+    using ServiceImplementation.Configs.Ads.Yandex;
+    using UnityEngine;
+    using YandexMobileAds;
+    using YandexMobileAds.Base;
+    using GameFoundation.Signals;
+    using UniT.Logging;
+    using AdInfo = Core.AdsServices.AdInfo;
+    using UnityEngine.Scripting;
+    using ILogger = UniT.Logging.ILogger;
+
+    public class YandexAdsWrapper : IAdServices, IInitializable, IAdLoadService, IAOAAdService
+    {
+        #region Inject
+
+        private readonly IAnalyticServices  analyticServices;
+        private readonly AdServicesConfig   adServicesConfig;
+        private readonly SignalBus          signalBus;
+        private readonly ThirdPartiesConfig thirdPartiesConfig;
+        private readonly ILogger        logger;
+
+        [Preserve]
+        public YandexAdsWrapper(IAnalyticServices analyticServices, AdServicesConfig adServicesConfig, SignalBus signalBus, ThirdPartiesConfig thirdPartiesConfig, ILoggerManager loggerManager)
+        {
+            this.analyticServices = analyticServices;
+            this.adServicesConfig = adServicesConfig;
+            this.signalBus = signalBus;
+            this.thirdPartiesConfig = thirdPartiesConfig;
+            this.logger = loggerManager.GetLogger(this);
+        }
+
+        #endregion
+
+        #region Variables
+
+        public  AdNetworkSettings AdNetworkSettings => this.thirdPartiesConfig.AdSettings.Yandex;
+        private YandexSettings    YandexSettings    => this.thirdPartiesConfig.AdSettings.Yandex;
+
+        public bool IsAdsInitialized() => true;
+
+        private bool   IsShowingAoaAd                 { get; set; }
+        private bool   IsBannerAdLoaded               { get; set; }
+        private string CurrentInterstitialAdPlacement { get; set; }
+        private string CurrentRewardedAdPlacement     { get; set; }
+        private Action OnRewardedAdCompleted          { get; set; }
+        private Action OnRewardedAdFailed             { get; set; }
+        private bool   IsRewardedAdReward             { get; set; }
+        public string AdPlatform => AdRevenueConstants.ARSourceYandex;
+
+        private string aoaAdPlacement;
+
+        private MaxSdkCallbacks.Banner       banner;
+        private AppOpenAdLoader              appOpenAdLoader;
+        private AppOpenAd                    appOpenAd;
+        private InterstitialAdLoader         interstitialAdLoader;
+        private MaxSdkCallbacks.Interstitial interstitialAd;
+        private RewardedAdLoader             rewardedAdLoader;
+        private RewardedAd                   rewardedAd;
+
+        #endregion
+
+
+        public void Initialize()
+        {
+            MobileAds.SetAgeRestrictedUser(true);
+            this.InitInterstitialAd();
+            this.InitRewardedAd();
+            this.InitAoaAd();
+
+#if THEONE_ADS_DEBUG
+            MobileAds.ShowDebugPanel();
+#endif
+
+            this.logger.Info("Initialize SDK");
+        }
+
+        #region Banner
+
+        private static int GetScreenWidthDp() => ScreenUtils.ConvertPixelsToDp((int)Screen.safeArea.width);
+
+        private void LoadNewBanner(BannerAdSize bannerSize)
+        {
+            this.IsBannerAdLoaded = false;
+
+            this.banner = new MaxSdkCallbacks.Banner(this.YandexSettings.BannerAdId.DefaultValue, bannerSize, AdPosition.BottomCenter);
+
+            this.banner.OnAdLoaded += this.HandleBannerAdLoaded;
+            this.banner.OnAdFailedToLoad += this.HandleBannerAdFailedToLoad;
+            this.banner.OnAdClicked += this.HandleBannerAdClicked;
+            this.banner.OnImpression += this.HandleImpression;
+
+            this.banner.LoadAd(new AdRequest.Builder().Build());
+        }
+
+        #region Events
+
+        private void HandleBannerAdLoaded(object sender, EventArgs args)
+        {
+            this.logger.Info($"HandleBannerAdLoaded");
+            var adInfo = new AdInfo(this.AdPlatform, this.YandexSettings.BannerAdId.DefaultValue, AdFormatConstants.Banner, AdFormatConstants.Banner);
+            this.signalBus.Fire(new BannerAdLoadedSignal("", adInfo));
+            this.IsBannerAdLoaded = true;
+        }
+
+        private void HandleBannerAdFailedToLoad(object sender, AdFailureEventArgs args)
+        {
+            this.logger.Info($"HandleBannerAdFailedToLoad {args.Message}");
+
+            this.signalBus.Fire(new BannerAdLoadFailedSignal("", args.Message));
+        }
+
+        private void HandleBannerAdClicked(object sender, EventArgs args)
+        {
+            this.logger.Info($"HandleBannerAdClicked");
+            var adInfo = new AdInfo(this.AdPlatform, this.YandexSettings.BannerAdId.DefaultValue, AdFormatConstants.Banner, AdFormatConstants.Banner);
+            this.signalBus.Fire(new BannerAdClickedSignal("", adInfo));
+        }
+
+        #endregion
+
+        #region Public
+
+
+        public void ShowBannerAd(BannerAdsPosition bannerAdsPosition = BannerAdsPosition.Bottom, int width = 320, int height = 50)
+        {
+            if (this.IsBannerAdLoaded && this.banner != null)
+            {
+                this.banner.Show();
+            }
+            else
+            {
+                this.DestroyBannerAd();
+                this.LoadNewBanner(BannerAdSize.StickySize(GetScreenWidthDp()));
+            }
+        }
+
+        public void HideBannedAd() => this.banner?.Hide();
+
+        public void DestroyBannerAd() => this.banner?.Destroy();
+
+        #endregion
+
+        #endregion
+
+        #region Rewarded
+
+        private Dictionary<string, object> rewardedMetadata = new();
+
+        private void InitRewardedAd()
+        {
+            this.rewardedAdLoader = new RewardedAdLoader();
+            this.rewardedAdLoader.OnAdLoaded += this.HandleRewardedAdLoaded;
+            this.rewardedAdLoader.OnAdFailedToLoad += this.HandleRewardedAdFailedToLoad;
+
+            this.LoadRewardAds();
+        }
+
+        private void DestroyRewardedAd()
+        {
+            this.rewardedAd?.Destroy();
+            this.rewardedAd = null;
+        }
+
+        #region Events
+
+        private void HandleRewardedAdLoaded(object sender, RewardedAdLoadedEventArgs args)
+        {
+            this.rewardedAd = args.RewardedAd;
+
+            this.rewardedAd.OnAdClicked += this.HandleRewardedAdClicked;
+            this.rewardedAd.OnAdShown += this.HandleRewardedAdShown;
+            this.rewardedAd.OnAdFailedToShow += this.HandleRewardedAdFailedToShow;
+            this.rewardedAd.OnAdImpression += this.HandleImpression;
+            this.rewardedAd.OnAdDismissed += this.HandleRewardedAdDismissed;
+            this.rewardedAd.OnRewarded += this.HandleRewardedAdReward;
+        }
+
+        private void HandleRewardedAdFailedToLoad(object sender, AdFailedToLoadEventArgs args)
+        {
+            this.logger.Info($"HandleRewardedAdFailedToLoad: {args.Message}");
+            this.signalBus.Fire(new RewardedAdLoadFailedSignal("", args.Message, 0));
+        }
+
+        private void HandleRewardedAdDismissed(object sender, EventArgs args)
+        {
+            this.logger.Info($"HandleRewardedAdDismissed");
+            if (this.IsRewardedAdReward)
+            {
+                this.OnRewardedAdCompleted?.Invoke();
+            }
+            else
+            {
+                this.OnRewardedAdFailed?.Invoke();
+            }
+            var adInfo = new AdInfo(this.AdPlatform, this.YandexSettings.RewardedAdId.DefaultValue, AdFormatConstants.Rewarded, AdFormatConstants.Rewarded);
+            this.signalBus.Fire(new RewardedAdClosedSignal(this.CurrentRewardedAdPlacement, adInfo));
+
+            this.DestroyRewardedAd();
+            this.LoadRewardAds();
+        }
+
+        private void HandleRewardedAdFailedToShow(object sender, AdFailureEventArgs args)
+        {
+            this.logger.Info($"HandleRewardedAdFailedToShow: {args.Message}");
+            var adInfo = new AdInfo(this.AdPlatform, this.YandexSettings.RewardedAdId.DefaultValue, AdFormatConstants.Rewarded, AdFormatConstants.Rewarded);
+            this.signalBus.Fire(new RewardedAdShowFailedSignal(this.CurrentRewardedAdPlacement, args.Message, adInfo));
+            this.DestroyRewardedAd();
+            this.LoadRewardAds();
+        }
+
+        private void HandleRewardedAdClicked(object sender, EventArgs args)
+        {
+            this.logger.Info($"HandleRewardedAdClicked");
+            var adInfo = new AdInfo(this.AdPlatform, this.YandexSettings.RewardedAdId.DefaultValue, AdFormatConstants.Rewarded, AdFormatConstants.Rewarded);
+            this.signalBus.Fire(new RewardedAdClickedSignal(this.CurrentRewardedAdPlacement, adInfo));
+        }
+
+        private void HandleRewardedAdShown(object sender, EventArgs args)
+        {
+            this.logger.Info($"HandleRewardedAdShown");
+            var adInfo = new AdInfo(this.AdPlatform, this.YandexSettings.RewardedAdId.DefaultValue, AdFormatConstants.Rewarded, AdFormatConstants.Rewarded);
+            this.signalBus.Fire(new RewardedAdDisplayedSignal(this.CurrentRewardedAdPlacement, adInfo, this.rewardedMetadata));
+        }
+
+        private void HandleRewardedAdReward(object sender, MaxSdkBase.Reward args)
+        {
+            this.logger.Info($"HandleRewardedAdReward");
+            this.IsRewardedAdReward = true;
+        }
+
+        #endregion
+
+        #region Public
+
+        public bool IsRewardedAdReady(string place) => !string.IsNullOrEmpty(place) && this.rewardedAd != null;
+
+        public void LoadRewardAds(string place = "")
+        {
+            if (string.IsNullOrEmpty(place)) return;
+            this.rewardedAdLoader.LoadAd(new AdRequestConfiguration.Builder(this.YandexSettings.RewardedAdId.DefaultValue).Build());
+        }
+
+        public bool TryGetRewardPlacementId(string placement, out string id)
+        {
+            id = default;
+            return false;
+        }
+
+        public void ShowRewardedAd(string place, Action onCompleted, Action onFailed, Dictionary<string, object> metadata)
+        {
+            this.IsRewardedAdReward = false;
+            this.CurrentRewardedAdPlacement = place;
+            this.OnRewardedAdCompleted = onCompleted;
+            this.OnRewardedAdFailed = onFailed;
+            this.rewardedMetadata = metadata;
+            this.rewardedAd?.Show();
+        }
+
+        #endregion
+
+        #endregion
+
+        #region Interstitial
+
+        private Dictionary<string, object> interstitialMetadata = new();
+
+        private void InitInterstitialAd()
+        {
+            this.interstitialAdLoader = new InterstitialAdLoader();
+            this.interstitialAdLoader.OnAdLoaded += this.HandleInterstitialLoaded;
+            this.interstitialAdLoader.OnAdFailedToLoad += this.HandleInterstitialFailedToLoad;
+
+            this.LoadInterstitialAd();
+        }
+
+        private void DestroyInterstitial()
+        {
+            this.interstitialAd?.Destroy();
+            this.interstitialAd = null;
+        }
+
+        #region Events
+
+        private void HandleInterstitialLoaded(object sender, InterstitialAdLoadedEventArgs args)
+        {
+            this.logger.Info($"HandleInterstitialLoaded, AdUnitId: {args.Interstitial.GetInfo().AdUnitId}");
+            this.interstitialAd = args.Interstitial;
+
+            this.interstitialAd.OnAdClicked += this.HandleInterstitialAdClicked;
+            this.interstitialAd.OnAdShown += this.HandleInterstitialShown;
+            this.interstitialAd.OnAdFailedToShow += this.HandleInterstitialFailedToShow;
+            this.interstitialAd.OnAdDismissed += this.HandleInterstitialDismissed;
+            this.interstitialAd.OnAdImpression += this.HandleImpression;
+            var adInfo = new AdInfo(this.AdPlatform, this.YandexSettings.InterstitialAdId.DefaultValue, AdFormatConstants.Interstitial);
+            this.signalBus.Fire(new InterstitialAdLoadedSignal("", 0,adInfo));
+        }
+
+        private void HandleInterstitialFailedToLoad(object sender, AdFailedToLoadEventArgs args)
+        {
+            this.logger.Info($"HandleInterstitialFailedToLoad {args.Message}");
+
+            this.signalBus.Fire(new InterstitialAdLoadFailedSignal("", args.Message, 0));
+        }
+
+        private void HandleInterstitialDismissed(object sender, EventArgs args)
+        {
+            this.logger.Info($"HandleInterstitialDismissed");
+            var adInfo = new AdInfo(this.AdPlatform, this.YandexSettings.InterstitialAdId.DefaultValue, AdFormatConstants.Interstitial);
+            this.signalBus.Fire(new InterstitialAdClosedSignal(this.CurrentInterstitialAdPlacement, adInfo));
+            this.DestroyInterstitial();
+            this.LoadInterstitialAd();
+        }
+
+        private void HandleInterstitialFailedToShow(object sender, EventArgs args)
+        {
+            this.logger.Info($"HandleInterstitialFailedToShow");
+            this.DestroyInterstitial();
+            this.LoadInterstitialAd();
+        }
+
+        private void HandleInterstitialAdClicked(object sender, EventArgs args)
+        {
+            this.logger.Info($"HandleInterstitialAdClicked");
+            var adInfo = new AdInfo(this.AdPlatform, this.YandexSettings.InterstitialAdId.DefaultValue, AdFormatConstants.Interstitial);
+            this.signalBus.Fire(new InterstitialAdClickedSignal(this.CurrentInterstitialAdPlacement, adInfo));
+        }
+
+        private void HandleInterstitialShown(object sender, EventArgs args)
+        {
+            this.logger.Info($"HandleInterstitialShown");
+            var adInfo = new AdInfo(this.AdPlatform, this.YandexSettings.InterstitialAdId.DefaultValue, AdFormatConstants.Interstitial);
+            this.signalBus.Fire(new InterstitialAdDisplayedSignal(this.CurrentInterstitialAdPlacement, adInfo, this.interstitialMetadata));
+        }
+
+        #endregion
+
+        #region Public
+
+        public bool IsInterstitialAdReady(string place) => this.interstitialAd != null;
+
+        public virtual void LoadInterstitialAd(string place = "")
+        {
+            if (string.IsNullOrEmpty(place)) return;
+            this.interstitialAdLoader.LoadAd(new AdRequestConfiguration.Builder(this.YandexSettings.InterstitialAdId.DefaultValue).Build());
+        }
+
+        public         bool TryGetInterstitialPlacementId(string placement, out string id) { id = default; return false; }
+
+        public void ShowInterstitialAd(string place, Dictionary<string, object> metadata)
+        {
+            this.CurrentInterstitialAdPlacement = place;
+            this.interstitialMetadata = metadata;
+            this.interstitialAd?.Show();
+        }
+
+        #endregion
+
+        #endregion
+
+        #region AOA
+
+        private void InitAoaAd()
+        {
+            this.appOpenAdLoader = new AppOpenAdLoader();
+            this.appOpenAdLoader.OnAdLoaded += this.HandleAoaAdLoaded;
+            this.appOpenAdLoader.OnAdFailedToLoad += this.HandleAoaAdFailedToLoad;
+
+            this.LoadAoaAd();
+        }
+
+        private void LoadAoaAd() => this.appOpenAdLoader.LoadAd(new AdRequestConfiguration.Builder(this.YandexSettings.AoaAdId.DefaultValue).Build());
+
+        private void DestroyAoaAd()
+        {
+            this.appOpenAd?.Destroy();
+            this.appOpenAd = null;
+        }
+
+        #region Events
+
+        private void HandleAoaAdLoaded(object sender, AppOpenAdLoadedEventArgs args)
+        {
+            this.logger.Info($"HandleAoaAdLoaded");
+            this.appOpenAd = args.AppOpenAd;
+
+            this.appOpenAd.OnAdClicked += this.HandleAoaAdClicked;
+            this.appOpenAd.OnAdShown += this.HandleAoaAdShown;
+            this.appOpenAd.OnAdFailedToShow += this.HandleAoaAdFailedToShow;
+            this.appOpenAd.OnAdDismissed += this.HandleAoaAdDismissed;
+            this.appOpenAd.OnAdImpression += this.HandleImpression;
+
+            var adInfo = new AdInfo(this.AdPlatform, this.YandexSettings.AoaAdId.DefaultValue, AdFormatConstants.AppOpen);
+            this.signalBus.Fire(new AppOpenLoadedSignal("", adInfo));
+        }
+
+        private void HandleAoaAdFailedToLoad(object sender, AdFailedToLoadEventArgs args)
+        {
+            this.logger.Info($"HandleAoaAdFailedToLoad: {args.Message}");
+            this.signalBus.Fire(new AppOpenLoadFailedSignal(""));
+        }
+
+        private void HandleAoaAdClicked(object sender, EventArgs args)
+        {
+            this.logger.Info($"HandleAoaAdClicked");
+            var adInfo = new AdInfo(this.AdPlatform, this.YandexSettings.AoaAdId.DefaultValue, AdFormatConstants.AppOpen);
+            this.signalBus.Fire(new AppOpenClickedSignal(this.aoaAdPlacement, adInfo));
+        }
+
+        private void HandleAoaAdShown(object sender, EventArgs args)
+        {
+            this.logger.Info($"HandleAoaAdShown");
+            var adInfo = new AdInfo(this.AdPlatform, this.YandexSettings.AoaAdId.DefaultValue, AdFormatConstants.AppOpen);
+            this.signalBus.Fire(new AppOpenFullScreenContentOpenedSignal(this.aoaAdPlacement, adInfo));
+            this.IsShowingAoaAd = true;
+        }
+
+        private void HandleAoaAdDismissed(object sender, EventArgs args)
+        {
+            this.logger.Info($"HandleAoaAdDismissed");
+            var adInfo = new AdInfo(this.AdPlatform, this.YandexSettings.AoaAdId.DefaultValue, AdFormatConstants.AppOpen);
+            this.signalBus.Fire(new AppOpenFullScreenContentClosedSignal(this.aoaAdPlacement, adInfo));
+            this.DestroyAoaAd();
+            this.LoadAoaAd();
+            this.IsShowingAoaAd = false;
+        }
+
+        private void HandleAoaAdFailedToShow(object sender, AdFailureEventArgs args)
+        {
+            this.logger.Info($"HandleAdFailedToShow event received with message: {args.Message}");
+            this.signalBus.Fire(new AppOpenFullScreenContentFailedSignal(this.aoaAdPlacement, args.Message));
+            this.DestroyAoaAd();
+            this.LoadAoaAd();
+        }
+
+        #endregion
+
+        #region Public
+
+        public bool IsAOAReady() => this.appOpenAd != null && !this.IsShowingAoaAd;
+
+        public void ShowAOAAds(string placement)
+        {
+            this.aoaAdPlacement = placement;
+            this.appOpenAd?.Show();
+        }
+        #endregion
+
+        #endregion
+
+        #region Ads Revenue
+
+        private void HandleImpression(object sender, ImpressionData impressionData)
+        {
+            var sData = impressionData?.rawData;
+            this.logger.Info($"{sData}");
+            if (string.IsNullOrEmpty(sData)) return;
+
+            try
+            {
+                var data = JsonConvert.DeserializeObject<YandexImpressionData>(sData);
+                var adsRevenueEvent = new AdsRevenueEvent()
+                {
+                    AdsRevenueSourceId = AdRevenueConstants.ARSourceYandex,
+                    Revenue = data.revenueUSD,
+                    Currency = "USD",
+                    Placement = data.adType,
+                    AdNetwork = data.network.name,
+                    AdFormat = data.adType,
+                    AdUnit = data.ad_unit_id
+                };
+
+                this.analyticServices.Track(adsRevenueEvent);
+                this.signalBus.Fire(new AdRevenueSignal(adsRevenueEvent));
+            }
+            catch
+            {
+                this.logger.Error($"Failed to parse impression data: {sData}");
+            }
+        }
+
+        #endregion
+    }
+}
+#endif

@@ -6,19 +6,34 @@ namespace Core.AnalyticServices.Data
     using Core.AnalyticServices.CommonEvents;
     using Core.AnalyticServices.Signal;
     using Core.AnalyticServices.Tools;
+    using GameFoundation.DI;
+    using GameFoundation.Signals;
+    using UniT.Logging;
     using UnityEngine;
     using Utilities.Extension;
-    using Zenject;
+    using ILogger = UniT.Logging.ILogger;
 
     public delegate void EventDelegate(IEvent trackedEvent, Dictionary<string, object> data);
 
-    public abstract class BaseTracker
+    public abstract class BaseTracker : IInitializable
     {
         #region inject
 
+        protected readonly SignalBus      signalBus;
         protected readonly AnalyticConfig analyticConfig;
+        protected readonly ILogger        logger;
 
         #endregion
+
+        /// <summary>
+        /// base constructor for trackers which sets up when/how events and states should be tracked
+        /// </summary>
+        protected BaseTracker(SignalBus signalBus, AnalyticConfig analyticConfig, ILoggerManager loggerManager)
+        {
+            this.signalBus      = signalBus;
+            this.analyticConfig = analyticConfig;
+            this.logger         = loggerManager.GetLogger(this);
+        }
 
         /// <summary>
         /// signal to the base tracker that the "On" events are ready to be invoked
@@ -43,13 +58,13 @@ namespace Core.AnalyticServices.Data
         protected abstract Dictionary<Type, EventDelegate> CustomEventDelegates { get; }
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="changedProps"></param>
         protected abstract void OnChangedProps(Dictionary<string, object> changedProps);
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="name"></param>
         /// <param name="data"></param>
@@ -61,45 +76,31 @@ namespace Core.AnalyticServices.Data
         protected abstract Task TrackerSetup();
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="userId"></param>
         protected abstract void SetUserId(string userId);
 
-        /// <summary>
-        /// base constructor for trackers which sets up when/how events and states should be tracked
-        /// </summary>
-        public BaseTracker(SignalBus signalBus, AnalyticConfig analyticConfig)
+        public void Initialize()
         {
-            this.analyticConfig = analyticConfig;
-            signalBus.Subscribe<EventTrackedSignal>(this.EventTracked);
-            signalBus.Subscribe<SetUserIdSignal>(signal => this.SetUserId(signal.UserId));
-            this.Init();
-        }
-
-        private async void Init()
-        {
-            await this.TrackerSetup();
+            this.TrackerSetup();
+            this.signalBus.Subscribe<EventTrackedSignal>(this.EventTracked);
+            this.signalBus.Subscribe<SetUserIdSignal>(signal => this.SetUserId(signal.UserId));
         }
 
         private async void EventTracked(EventTrackedSignal trackedData)
         {
             // if the tracker has failed setup we should not forward it any events
-            if (this.TrackerReady.Task.Status == TaskStatus.Canceled || this.TrackerReady.Task.Status == TaskStatus.Faulted)
-                return;
+            if (this.TrackerReady.Task.Status == TaskStatus.Canceled || this.TrackerReady.Task.Status == TaskStatus.Faulted) return;
             await this.TrackerReady.Task;
 
-            if (trackedData.ChangedProps != null)
-                this.OnChangedProps(trackedData.ChangedProps);
+            if (trackedData.ChangedProps != null) this.OnChangedProps(trackedData.ChangedProps);
 
             var trackedEvent = trackedData.TrackedEvent;
             if (this.CustomEventDelegates != null && this.CustomEventDelegates.ContainsKey(trackedEvent.GetType()))
             {
-                var eventDelegate = this.CustomEventDelegates[trackedEvent.GetType()];
-                if (trackedEvent is IapTransactionDidSucceed iapEvent)
-                {
-                    iapEvent.Receipt = this.CheckReceiptFormat(iapEvent.Receipt);
-                }
+                var eventDelegate                                                       = this.CustomEventDelegates[trackedEvent.GetType()];
+                if (trackedEvent is IapTransactionDidSucceed iapEvent) iapEvent.Receipt = this.CheckReceiptFormat(iapEvent.Receipt);
 
                 eventDelegate?.Invoke(trackedEvent, trackedData.ChangedProps);
             }
@@ -122,7 +123,7 @@ namespace Core.AnalyticServices.Data
                 }
 
                 if (string.IsNullOrEmpty(eventName)) return;
-                if (this.IncludeEvents is { Count: > 0 } && !this.IncludeEvents.Contains(eventName)) return;
+                if (this.IncludeEvents.Count > 0 && !this.IncludeEvents.Contains(eventName)) return;
 
                 this.OnEvent(eventName, eventData);
             }
@@ -133,25 +134,16 @@ namespace Core.AnalyticServices.Data
             var result     = new Dictionary<string, object>();
             var objectType = obj.GetType();
 
-            foreach (var fieldInfo in objectType.GetFields())
-            {
-                result.Add(this.GetCorrectName(fieldInfo.Name), fieldInfo.GetValue(obj));
-            }
+            foreach (var fieldInfo in objectType.GetFields()) result.Add(this.GetCorrectName(fieldInfo.Name), fieldInfo.GetValue(obj));
 
-            foreach (var propertyInfo in objectType.GetProperties())
-            {
-                result.Add(this.GetCorrectName(propertyInfo.Name), propertyInfo.GetValue(obj));
-            }
+            foreach (var propertyInfo in objectType.GetProperties()) result.Add(this.GetCorrectName(propertyInfo.Name), propertyInfo.GetValue(obj));
 
             return result;
         }
 
         private string GetCorrectName(string rawName)
         {
-            if (this.CustomEventKeys != null && this.CustomEventKeys.TryGetValue(rawName, out var correctName))
-            {
-                return correctName;
-            }
+            if (this.CustomEventKeys != null && this.CustomEventKeys.TryGetValue(rawName, out var correctName)) return correctName;
 
             return rawName.ToSnakeCase();
         }
@@ -162,13 +154,10 @@ namespace Core.AnalyticServices.Data
             {
                 var parsedReceipt = JsonUtility.FromJson<UnityReceipt>(receipt);
                 //Check if the parameter sent follows the Unity Purchase Receipt format.
-                if (!string.IsNullOrEmpty(parsedReceipt.Payload) &&
-                    !string.IsNullOrEmpty(parsedReceipt.Store) &&
-                    !string.IsNullOrEmpty(parsedReceipt.TransactionID))
+                if (!string.IsNullOrEmpty(parsedReceipt.Payload) && !string.IsNullOrEmpty(parsedReceipt.Store) && !string.IsNullOrEmpty(parsedReceipt.TransactionID))
                 {
                     //Return the receipt Payload to prevent integration errors.
-                    Debug.LogWarning(
-                        "[AnalyticService BaseTracker] Wrong receipt parameter detected. Replacing it with Receipt.Payload");
+                    this.logger.Warning("Wrong receipt parameter detected. Replacing it with Receipt.Payload");
 
                     return parsedReceipt.Payload;
                 }

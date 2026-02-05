@@ -38,17 +38,17 @@ namespace ServiceImplementation.Configs.Editor
 
             PlayerSettings.SetScriptingDefineSymbols(buildTarget, string.Join(Delemiter, defineSymbols));
         }
-        
+
         // Modify the package in the manifest.json
         // add: true to add a package, false to remove a package
         // packageName: the package name to add or remove
         // packagePath: the package path to add, null to get the latest version
-        public static void ModifyPackage(bool add, string packageName, string packagePath)
+        public static void ModifyPackage(bool add, string packageName, string packagePath, bool isReplace = false)
         {
             var manifestPath = Path.Combine(Application.dataPath, "../Packages/manifest.json");
             if (File.Exists(manifestPath))
             {
-                var  manifestContent = File.ReadAllText(manifestPath);
+                var manifestContent = File.ReadAllText(manifestPath);
                 var manifestJson    = JObject.Parse(manifestContent);
 
                 // Check if the package already exists
@@ -62,12 +62,9 @@ namespace ServiceImplementation.Configs.Editor
                         manifestJson["dependencies"][packageName] = packagePath;
                         Debug.Log($"Package {packageName} added successfully.");
                     }
-                    else
+                    else if (isReplace)
                     {
-                        if (packageToken.ToString().Equals(packagePath))
-                        {
-                            Debug.LogWarning($"Package {packageName} already exists. No action taken.");
-                        }
+                        if (packageToken.ToString().Equals(packagePath)) Debug.LogWarning($"Package {packageName} already exists. No action taken.");
                         manifestJson["dependencies"][packageName] = packagePath;
                         Debug.LogWarning($"Update package path for {packageName}.");
                     }

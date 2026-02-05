@@ -1,17 +1,29 @@
 namespace ServiceImplementation.AdsServices.ConsentInformation
 {
-    using GameFoundation.Scripts.Utilities.LogService;
+    using UniT.Logging;
+    using UnityEngine.Scripting;
 
     public class DummyConsentInformation : IConsentInformation
     {
         #region Inject
 
-        private readonly ILogService logService;
+        private readonly ILogger logger;
 
         #endregion
 
-        public DummyConsentInformation(ILogService logService) { this.logService = logService; }
+        [Preserve]
+        public DummyConsentInformation(ILoggerManager loggerManager)
+        {
+            this.logger = loggerManager.GetLogger(this);
+        }
 
-        public void Request() { this.logService.Log("Request consent information"); }
+        public bool CanRequestAds() => true;
+
+        public void RequestConsent()
+        {
+            this.logger.Info("Request consent information");
+        }
+
+        public bool IsRequestingConsent() => false;
     }
 }

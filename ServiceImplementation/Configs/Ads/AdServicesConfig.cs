@@ -1,10 +1,13 @@
 namespace ServiceImplementation.Configs.Ads
 {
     using System;
+    using System.Collections.Generic;
+    using GameFoundation.DI;
+    using GameFoundation.Signals;
     using ServiceImplementation.FireBaseRemoteConfig;
-    using Zenject;
+    using UnityEngine.Scripting;
 
-    public class AdServicesConfig : IInitializable, IDisposable
+    public partial class AdServicesConfig : IInitializable, IDisposable
     {
         #region Constructor
 
@@ -12,6 +15,7 @@ namespace ServiceImplementation.Configs.Ads
         private readonly IRemoteConfig       remoteConfig;
         private readonly RemoteConfigSetting remoteConfigSetting;
 
+        [Preserve]
         public AdServicesConfig(SignalBus signalBus, IRemoteConfig remoteConfig, RemoteConfigSetting remoteConfigSetting)
         {
             this.signalBus           = signalBus;
@@ -44,14 +48,20 @@ namespace ServiceImplementation.Configs.Ads
         public bool EnableNativeAd               { get; private set; }
         public bool EnableCollapsibleBanner      { get; private set; }
         public int  IntervalLoadAds              { get; private set; }
+        public bool EnableAds                    { get; private set; }
 
         #endregion
 
         #region AOA
 
-        public int  MinPauseSecondToShowAoaAd { get; private set; }
-        public int  AOAStartSession           { get; private set; }
-        public bool UseAoaAdmob               { get; private set; }
+        public float AOALoadingThreshold       { get; private set; }
+        public int   MinPauseSecondToShowAoaAd { get; private set; }
+        public int   AOAStartSession           { get; private set; }
+        public bool  UseAoaAdmob               { get; private set; }
+
+        // level >= AOAResumeAdStartLevel || session >= AOAResumeAdStartSession => show AOA ad
+        public int   AOAResumeAdStartLevel     { get; private set; } // necessary and sufficient conditions - The level to start showing AOA ad when resume app
+        public int   AOAResumeAdStartSession   { get; private set; } // necessary and sufficient conditions - The session to start showing AOA ad when resume app
 
         #endregion
 
@@ -87,6 +97,26 @@ namespace ServiceImplementation.Configs.Ads
         /// </summary>
         public bool ResetInterAdIntervalAfterRewardAd { get; private set; }
 
+        /// <summary>
+        ///     Is Show the interstitial ad instead of AOA ad when resume app
+        /// </summary>
+        public bool IsIntersInsteadAoaResume { get; private set; }
+
+        /// <summary>
+        ///     A configuration to adjust the distance between the interstitial ads display by level.
+        /// </summary>
+        public Dictionary<int, int> LevelConditionInterstitialTimeGap { get; private set; }
+
+        /// <summary>
+        ///     Adjust the delay (waiting time) from opening the app to the first display of interstitial.
+        /// </summary>
+        public Dictionary<int, int> LevelConditionInterstitialAppOpenDelay { get; private set; }
+
+        /// <summary>
+        ///     Adjust the time between the Rewarded ADS (RW) display and the next interstitial.
+        /// </summary>
+        public Dictionary<int, int> LevelConditionInterRwTimeGap { get; private set; }
+        
         #endregion
 
         #region Rewarded
@@ -106,12 +136,17 @@ namespace ServiceImplementation.Configs.Ads
         public int CollapsibleBannerADInterval { get; private set; }
 
         /// <summary>
+        ///     The interval refresh collapsible banner expand
+        /// </summary>
+        public int CollapsibleBannerExpandOnRefreshInterval { get; private set; }
+
+        /// <summary>
         ///     Enable fallback to banner ad when collapsible banner ad is not available
         /// </summary>
         public bool EnableCollapsibleBannerFallback { get; private set; }
 
         /// <summary>
-        ///     Auto refresh collapsible banner ad each <see cref="CollapsibleBannerADInterval"/>
+        ///     Auto refresh collapsible banner ad each <see cref="CollapsibleBannerExpandOnRefreshInterval"/>
         /// </summary>
         public bool CollapsibleBannerAutoRefreshEnabled { get; private set; }
 
@@ -122,19 +157,66 @@ namespace ServiceImplementation.Configs.Ads
 
         #endregion
 
+        #region MREC
+
+        /// <summary>
+        ///     Enable interval refresh mrec ad
+        /// </summary>
+        public bool EnableMrecRefreshInterval { get; private set; }
+
+        /// <summary>
+        ///     The interval refresh mrec ad
+        /// </summary>
+        public int MrecRefreshInterval { get; private set; }
+
+        /// <summary>
+        ///     Enable collapsible mrec ad
+        /// </summary>
+        public bool EnableCollapsibleMrec { get; private set; }
+
+        /// <summary>
+        ///     The interval collapsible mrec ad
+        /// </summary>
+        public int CollapsibleMrecInterval { get; private set; }
+
+        /// <summary>
+        ///     The duration collapsible mrec ad is displayed before automatically closing if the user doesn't close it
+        /// </summary>
+        public int CollapsibleMrecDisplayTime { get; private set; }
+
+        public bool EnableGadsme { get; private set; }
+
+        #endregion
+
+        #region Native
+
+        public bool NativeOverlayInterEnable   { get; private set; }
+        public bool NativeInterEnable          { get; private set; }
+        public bool ShowNativeInterAfterInter  { get; private set; }
+        public int  NativeInterCappingTime     { get; private set; }
+        public int  NativeInterCountdown       { get; private set; }
+        public bool NativeInterShowAdsComplete { get; private set; }
+        public bool EnableNativeCollapse       { get; private set; }
+        public int  NativeCollapseCloseTime    { get; private set; }
+        public int  NativeCollapseLoad         { get; private set; }
+
+        #endregion
+
         private void FetchRemoteConfig()
         {
+            this.FetchRemoteConfigPartial();
             #region General
 
-            this.EnableBannerAd               = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableBannerAD);
-            this.EnableInterstitialAd         = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableInterstitialAD);
-            this.EnableMRECAd                 = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableMrecAD);
-            this.EnableAOAAd                  = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableAoaAD);
-            this.EnableRewardedAd             = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableRewardedAD);
-            this.EnableRewardedInterstitialAd = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableRewardedInterstitialAD);
-            this.EnableNativeAd               = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableNativeAD);
+            this.EnableAds                    = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableAds);
+            this.EnableBannerAd               = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableBannerAD) && this.EnableAds;
+            this.EnableInterstitialAd         = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableInterstitialAD) && this.EnableAds;
+            this.EnableMRECAd                 = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableMrecAD) && this.EnableAds;
+            this.EnableAOAAd                  = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableAoaAD) && this.EnableAds;
+            this.EnableRewardedAd             = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableRewardedAD) && this.EnableAds;
+            this.EnableRewardedInterstitialAd = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableRewardedInterstitialAD) && this.EnableAds;
+            this.EnableNativeAd               = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableNativeAD) && this.EnableAds;
             #if THEONE_COLLAPSIBLE_BANNER
-            this.EnableCollapsibleBanner = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableCollapsibleBanner);
+            this.EnableCollapsibleBanner = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableCollapsibleBanner) && this.EnableAds;
             #endif
             this.IntervalLoadAds = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.IntervalLoadAds);
 
@@ -142,20 +224,27 @@ namespace ServiceImplementation.Configs.Ads
 
             #region AOA
 
+            this.AOALoadingThreshold       = RemoteConfigHelpers.GetFloatRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.AOALoadingThreshold);
             this.MinPauseSecondToShowAoaAd = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.MinPauseSecondToShowAoaAD);
             this.AOAStartSession           = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.AoaStartSession);
             this.UseAoaAdmob               = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.UseAoaAdmob);
+            this.AOAResumeAdStartLevel     = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.AoaAdResumeStartLevel);
+            this.AOAResumeAdStartSession   = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.AoaAdResumeStartSession);
 
             #endregion
 
             #region Interstitial
 
-            this.InterstitialAdInterval            = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.InterstitialADInterval);
-            this.InterstitialAdStartLevel          = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.InterstitialADStartLevel);
-            this.InterstitialAdActivePlacements    = RemoteConfigHelpers.GetStringRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.InterstitialAdActivePlacements).Split(',');
-            this.DelayFirstInterstitialAdInterval  = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.DelayFirstIntersADInterval);
-            this.DelayFirstInterNewSession         = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.DelayFirstIntersNewSession);
-            this.ResetInterAdIntervalAfterRewardAd = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.ResetInterAdIntervalAfterRewardAd);
+            this.InterstitialAdInterval                 = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.InterstitialADInterval);
+            this.InterstitialAdStartLevel               = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.InterstitialADStartLevel);
+            this.InterstitialAdActivePlacements         = RemoteConfigHelpers.GetStringRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.InterstitialAdActivePlacements).Split(',');
+            this.DelayFirstInterstitialAdInterval       = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.DelayFirstIntersADInterval);
+            this.DelayFirstInterNewSession              = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.DelayFirstIntersNewSession);
+            this.ResetInterAdIntervalAfterRewardAd      = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.ResetInterAdIntervalAfterRewardAd);
+            this.IsIntersInsteadAoaResume               = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.IsIntersInsteadAoaResume);
+            this.LevelConditionInterstitialTimeGap      = RemoteConfigHelpers.GetObjectRemoteValue<Dictionary<int, int>>(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.LevelConditionInterstitialTimeGap) ?? new Dictionary<int, int>();
+            this.LevelConditionInterstitialAppOpenDelay = RemoteConfigHelpers.GetObjectRemoteValue<Dictionary<int, int>>(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.LevelConditionInterstitialAppOpenDelay) ?? new Dictionary<int, int>();
+            this.LevelConditionInterRwTimeGap           = RemoteConfigHelpers.GetObjectRemoteValue<Dictionary<int, int>>(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.LevelConditionInterRwTimeGap) ?? new Dictionary<int, int>();
 
             #endregion
 
@@ -167,12 +256,45 @@ namespace ServiceImplementation.Configs.Ads
 
             #region Collapsible
 
-            this.CollapsibleBannerADInterval             = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.CollapsibleBannerADInterval);
-            this.EnableCollapsibleBannerFallback         = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableCollapsibleBannerFallback);
-            this.CollapsibleBannerAutoRefreshEnabled     = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.CollapsibleBannerAutoRefreshEnabled);
-            this.CollapsibleBannerExpandOnRefreshEnabled = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.CollapsibleBannerExpandOnRefreshEnabled);
+            this.CollapsibleBannerADInterval              = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.CollapsibleBannerADInterval);
+            this.CollapsibleBannerExpandOnRefreshInterval = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.CollapsibleBannerExpandOnRefreshInterval);
+            this.EnableCollapsibleBannerFallback          = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableCollapsibleBannerFallback);
+            this.CollapsibleBannerAutoRefreshEnabled      = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.CollapsibleBannerAutoRefreshEnabled);
+            this.CollapsibleBannerExpandOnRefreshEnabled  = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.CollapsibleBannerExpandOnRefreshEnabled);
 
             #endregion
+
+            #region MREC
+
+            this.EnableMrecRefreshInterval  = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableMrecRefreshInterval);
+            this.MrecRefreshInterval        = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.MrecRefreshInterval);
+            this.EnableCollapsibleMrec      = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableCollapsibleMrec);
+            this.CollapsibleMrecInterval    = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.CollapsibleMrecInterval);
+            this.CollapsibleMrecDisplayTime = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.CollapsibleMrecDisplayTime);
+
+            #endregion
+
+            #region Native
+
+            this.NativeOverlayInterEnable   = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.NativeOverlayInterEnable);
+            this.NativeInterEnable          = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.NativeInterEnable);
+            this.ShowNativeInterAfterInter  = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.ShowNativeInterAfterInter);
+            this.NativeInterCappingTime     = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.NativeInterCappingTime);
+            this.NativeInterCountdown       = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.NativeInterCountdown);
+            this.NativeInterShowAdsComplete = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.NativeInterShowAdsComplete);
+            this.EnableNativeCollapse       = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.EnableNativeCollapse);
+            this.NativeCollapseCloseTime    = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.NativeCollapseCloseTime);
+            this.NativeCollapseLoad         = RemoteConfigHelpers.GetIntRemoteValue(this.remoteConfig, this.remoteConfigSetting, RemoteConfigKey.NativeCollapseLoad);
+
+            #endregion
+
+            #if GADSME
+
+            this.EnableGadsme = RemoteConfigHelpers.GetBoolRemoteValue(this.remoteConfig,this.remoteConfigSetting,RemoteConfigKey.EnableGadsme);
+
+            #endif
         }
+
+        partial void FetchRemoteConfigPartial();
     }
 }

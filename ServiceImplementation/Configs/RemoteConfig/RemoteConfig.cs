@@ -7,14 +7,14 @@
     public class RemoteConfig
     {
         public string key;
-        public AdId   mapping;
-        public AdId   defaultValue;
+        public CrossPlatformValue   mapping;
+        public CrossPlatformValue   defaultValue;
 
         public RemoteConfig(string key, string mapping, string defaultValue)
         {
             this.key          = key;
-            this.mapping      = new AdId(mapping, mapping);
-            this.defaultValue = new AdId(defaultValue, defaultValue);
+            this.mapping      = new(mapping, mapping);
+            this.defaultValue = new(defaultValue, defaultValue);
         }
     }
 }

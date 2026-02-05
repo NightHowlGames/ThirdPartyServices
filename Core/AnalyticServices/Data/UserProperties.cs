@@ -6,7 +6,11 @@ namespace Core.AnalyticServices.Data
     public sealed partial class UserProperties : INotifyPropertyChanged
     {
         private readonly IAnalyticServices analyticServices;
-        public UserProperties(IAnalyticServices analyticServices) { this.analyticServices = analyticServices; }
+
+        public UserProperties(IAnalyticServices analyticServices)
+        {
+            this.analyticServices = analyticServices;
+        }
 
         /// <summary>
         /// 
@@ -79,32 +83,30 @@ namespace Core.AnalyticServices.Data
         /// Tracking of location (screen) changes can provide you additional information about user behaviour.
         /// This data will be sent as soon as possible.
         /// </remarks>
-        public string ScreenLocation
+        public string Location
         {
             get => this.get<string>();
             set
             {
                 var currentLocation = this.get<string>();
                 if (currentLocation == value)
-                {
                     // Do not track changes to same location.
                     return;
-                }
 
                 this.set(value);
-                this.ScreenLocationPrev = currentLocation;
-                this.analyticServices.Track(new ScreenLocationChange(value, currentLocation));
+                this.LocationPrev = currentLocation;
+                this.analyticServices.Track(new LocationChange(value, currentLocation));
             }
         }
 
         /// <summary>
         /// Use it to track previous ingame screen (ingame location).
-        /// (automatically updated with set <see cref="ScreenLocation"/> ).
+        /// (automatically updated with set <see cref="Location"/> ).
         /// </summary>
         /// <remarks>
         /// Tracking of screen changes can provide you additional information about user behaviour.
         /// </remarks>
-        public string ScreenLocationPrev { get => this.get<string>(); internal set => this.set(value); }
+        public string LocationPrev { get => this.get<string>(); internal set => this.set(value); }
 
         /*
          * Game
@@ -154,7 +156,6 @@ namespace Core.AnalyticServices.Data
         /// Indicates if application is patched or pirated.
         /// </summary>
         public bool GameValidApp { get => this.get<bool>(); set => this.set(value); }
-
 
         /*
          * OS

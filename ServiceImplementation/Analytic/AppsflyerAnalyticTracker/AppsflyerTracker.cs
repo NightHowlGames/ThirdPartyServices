@@ -1,5 +1,4 @@
 ﻿#if APPSFLYER
-
 namespace ServiceImplementation.AppsflyerAnalyticTracker
 {
     using System;
@@ -11,36 +10,34 @@ namespace ServiceImplementation.AppsflyerAnalyticTracker
     using Core.AnalyticServices;
     using Core.AnalyticServices.CommonEvents;
     using Core.AnalyticServices.Data;
-    using GameFoundation.Scripts.Utilities.Extension;
-    using GameFoundation.Scripts.Utilities.LogService;
     using UnityEngine;
-    using Zenject;
-#if THEONE_IAP
-    using AppsFlyerConnector;
-#endif
+    using GameFoundation.Signals;
+    using UniT.Logging;
+    using UnityEngine.Scripting;
 
     public class AppsflyerTracker : BaseTracker
     {
-        private readonly   ILogService                       logger;
-        private readonly   AnalyticsEventCustomizationConfig customizationConfig;
-        protected override TaskCompletionSource<bool>        TrackerReady { get; } = new();
+        private readonly AnalyticsEventCustomizationConfig customizationConfig;
 
-        protected override Dictionary<Type, EventDelegate> CustomEventDelegates => new()
+        [Preserve]
+        public AppsflyerTracker(SignalBus signalBus, AnalyticConfig analyticConfig, ILoggerManager loggerManager, AnalyticsEventCustomizationConfig customizationConfig) : base(signalBus, analyticConfig, loggerManager)
         {
-            { typeof(IapTransactionDidSucceed), this.TrackIAP },
-            { typeof(AdsRevenueEvent), this.TrackAdsRevenue }
-        };
-
-        public AppsflyerTracker(ILogService logger, SignalBus signalBus, AnalyticConfig analyticConfig, AnalyticsEventCustomizationConfig customizationConfig) : base(signalBus, analyticConfig)
-        {
-            this.logger              = logger;
             this.customizationConfig = customizationConfig;
 
             if (customizationConfig.CustomEventKeys.Count == 0)
             {
-                this.logger.Error($"CustomEventKeys is empty, please Init in your ProjectInstaller");
+                this.logger.Warning($"CustomEventKeys is empty, please Init in your ProjectInstaller");
             }
         }
+
+        protected override TaskCompletionSource<bool> TrackerReady { get; } = new();
+
+        protected override Dictionary<Type, EventDelegate> CustomEventDelegates =>
+            new()
+            {
+                { typeof(IapTransactionDidSucceed), this.TrackIAP },
+                { typeof(AdsRevenueEvent), this.TrackAdsRevenue }
+            };
 
         protected override HashSet<Type>              IgnoreEvents    => this.customizationConfig.IgnoreEvents;
         protected override HashSet<string>            IncludeEvents   => this.customizationConfig.IncludeEvents;
@@ -50,7 +47,7 @@ namespace ServiceImplementation.AppsflyerAnalyticTracker
         {
             if (this.TrackerReady.Task.Status == TaskStatus.RanToCompletion) return Task.CompletedTask;
 
-            Debug.Log($"setting up appsflyer tracker");
+            this.logger.Info($"setting up appsflyer tracker");
 
             var apiId  = this.analyticConfig.AppsflyerAppId;
             var devKey = this.analyticConfig.AppsflyerDevKey;
@@ -65,34 +62,36 @@ namespace ServiceImplementation.AppsflyerAnalyticTracker
                 throw new Exception("Appsflyer can't be initialized, Appsflyer DevKey not found");
             }
 
-#if UNITY_IOS || UNITY_STANDALONE_OSX
+            #if UNITY_IOS || UNITY_STANDALONE_OSX
             if (string.IsNullOrEmpty(apiId))
             {
-                Debug.LogError("Appsflyer can't be initialized, Appsflyer ApiKey not found");
+                this.logger.Error("Appsflyer can't be initialized, Appsflyer ApiKey not found");
                 this.TrackerReady.SetResult(false);
                 return this.TrackerReady.Task;
             }
-#endif
-            AppsFlyer.initSDK(devKey, apiId);
-#if UNITY_IOS && !UNITY_EDITOR
+            #endif
+            var appsflyerMono = AppsflyerMono.Create(this.signalBus, this.logger);
+            AppsFlyer.initSDK(devKey, apiId, appsflyerMono);
+            #if UNITY_IOS && !UNITY_EDITOR
             AppsFlyer.waitForATTUserAuthorizationWithTimeoutInterval(60);
-#endif
-            AppsFlyer.setIsDebug(this.analyticConfig.AppsflyerIsDebug);
+            #endif
+            #if THEONE_MMP_DEBUG && !PRODUCTION
+            AppsFlyer.setIsDebug(true);
+            #endif
 
             //IAP Revenue connector
-#if THEONE_IAP
-            AppsFlyerPurchaseConnector.init(AppsflyerMono.Create(), Store.GOOGLE);
-            AppsFlyerPurchaseConnector.setIsSandbox(this.analyticConfig.AppsflyerIsDebug);
+            #if THEONE_IAP
+            AppsFlyerPurchaseConnector.init(appsflyerMono, Store.GOOGLE);
+            #if THEONE_MMP_DEBUG && !PRODUCTION
+            AppsFlyerPurchaseConnector.setIsSandbox(true);
+            #endif
             AppsFlyerPurchaseConnector.setAutoLogPurchaseRevenue(AppsFlyerAutoLogPurchaseRevenueOptions.AppsFlyerAutoLogPurchaseRevenueOptionsAutoRenewableSubscriptions, AppsFlyerAutoLogPurchaseRevenueOptions.AppsFlyerAutoLogPurchaseRevenueOptionsInAppPurchases);
             AppsFlyerPurchaseConnector.build();
             AppsFlyerPurchaseConnector.startObservingTransactions();
-#endif
+            #endif
 
             //Start SDK
             AppsFlyer.startSDK();
-
-            //Ads Revenue connector
-            AppsFlyerAdRevenue.start();
 
             this.TrackerReady.SetResult(true);
 
@@ -112,7 +111,7 @@ namespace ServiceImplementation.AppsflyerAnalyticTracker
 
         protected override void OnEvent(string name, Dictionary<string, object> data)
         {
-            Debug.Log($"Appsflyer: On Event {name}");
+            this.logger.Info($"On Event {name}");
             var convertedData = data == null ? new Dictionary<string, string>() : data.ToDictionary(pair => pair.Key, pair => pair.Value?.ToString());
             AppsFlyer.sendEvent(name, convertedData);
         }
@@ -123,7 +122,7 @@ namespace ServiceImplementation.AppsflyerAnalyticTracker
         {
             if (trackedEvent is not IapTransactionDidSucceed iapTransaction)
             {
-                Debug.LogError("trackedEvent in TrackIAP is not of correct type");
+                this.logger.Error("trackedEvent in TrackIAP is not of correct type");
 
                 return;
             }
@@ -133,7 +132,7 @@ namespace ServiceImplementation.AppsflyerAnalyticTracker
                 { AFInAppEvents.CURRENCY, iapTransaction.CurrencyCode },
                 { AFInAppEvents.PRICE, iapTransaction.Price.ToString(CultureInfo.InvariantCulture) },
                 { AFInAppEvents.PURCHASE, iapTransaction.Price.ToString(CultureInfo.InvariantCulture) },
-                { AFInAppEvents.REVENUE, iapTransaction.Price.ToString(CultureInfo.InvariantCulture) },
+                { AFInAppEvents.REVENUE, iapTransaction.Revenue.ToString(CultureInfo.InvariantCulture) },
                 { AFInAppEvents.CONTENT_ID, iapTransaction.OfferSku }
             };
 
@@ -144,26 +143,31 @@ namespace ServiceImplementation.AppsflyerAnalyticTracker
         {
             if (trackedEvent is not AdsRevenueEvent adsRevenueEvent)
             {
-                Debug.LogError("trackedEvent in AdsRevenue is not of correct type");
-
+                this.logger.Error("trackedEvent in AdsRevenue is not of correct type");
                 return;
             }
 
-            Dictionary<string, string> dic = new Dictionary<string, string>();
-            dic.Add(AFAdRevenueEvent.AD_UNIT, adsRevenueEvent.AdUnit);
-            dic.Add(AFAdRevenueEvent.AD_TYPE, adsRevenueEvent.AdFormat);
-            dic.Add(AFAdRevenueEvent.PLACEMENT, adsRevenueEvent.Placement);
-            dic.Add("af_quantity", "1");
-            AppsFlyerAdRevenueMediationNetworkType mediationNetworkType = adsRevenueEvent.AdsRevenueSourceId switch
+            var parameters = new Dictionary<string, string>
             {
-                AdRevenueConstants.ARSourceAppLovinMAX => AppsFlyerAdRevenueMediationNetworkType.AppsFlyerAdRevenueMediationNetworkTypeApplovinMax,
-                AdRevenueConstants.ARSourceIronSource  => AppsFlyerAdRevenueMediationNetworkType.AppsFlyerAdRevenueMediationNetworkTypeIronSource,
-                AdRevenueConstants.ARSourceAdMob       => AppsFlyerAdRevenueMediationNetworkType.AppsFlyerAdRevenueMediationNetworkTypeGoogleAdMob,
-                AdRevenueConstants.ARSourceUnity       => AppsFlyerAdRevenueMediationNetworkType.AppsFlyerAdRevenueMediationNetworkTypeUnity,
-                _                                      => AppsFlyerAdRevenueMediationNetworkType.AppsFlyerAdRevenueMediationNetworkTypeCustomMediation
+                { AdRevenueScheme.AD_UNIT, adsRevenueEvent.AdUnit },
+                { AdRevenueScheme.AD_TYPE, adsRevenueEvent.AdFormat },
+                { AdRevenueScheme.PLACEMENT, adsRevenueEvent.Placement },
+                { "af_quantity", "1" }
             };
 
-            AppsFlyerAdRevenue.logAdRevenue(adsRevenueEvent.AdNetwork, mediationNetworkType, adsRevenueEvent.Revenue, adsRevenueEvent.Currency, dic);
+            var mediationNetworkType = adsRevenueEvent.AdsRevenueSourceId switch
+            {
+                AdRevenueConstants.ARSourceAppLovinMAX => MediationNetwork.ApplovinMax,
+                AdRevenueConstants.ARSourceIronSource  => MediationNetwork.IronSource,
+                AdRevenueConstants.ARSourceAdMob       => MediationNetwork.GoogleAdMob,
+                AdRevenueConstants.ARSourceUnity       => MediationNetwork.Unity,
+                AdRevenueConstants.ARSourceYandex      => MediationNetwork.Yandex,
+                _                                      => MediationNetwork.Custom
+            };
+
+            var logRevenue = new AFAdRevenueData(adsRevenueEvent.AdNetwork, mediationNetworkType, adsRevenueEvent.Currency, adsRevenueEvent.Revenue);
+            AppsFlyer.logAdRevenue(logRevenue, parameters);
+            this.logger.Info($"On Event Ad Revenue - adUnit {adsRevenueEvent.AdUnit} - AdFormat {adsRevenueEvent.AdFormat} - AdNetwork {adsRevenueEvent.AdNetwork} - mediationNetworkType {mediationNetworkType} - {adsRevenueEvent.Placement} - {adsRevenueEvent.Currency} - {adsRevenueEvent.Revenue}");
         }
     }
 }
