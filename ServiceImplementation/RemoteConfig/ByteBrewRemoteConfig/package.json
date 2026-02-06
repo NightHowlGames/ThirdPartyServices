@@ -4,12 +4,12 @@
   "version": "1.0.0",
   "description": "",
   "author": {
-    "name": "TheOne - 3rd",
-    "email": "tuha@the1studio.org"
+    "name": "UniT - 3rd",
+    "email": "duycuong2k3@gmail.com"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/The1Studio/3rdRemoteConfigByteBrew.git"
+    "url": "https://github.com/"
   },
   "dependencies": {
     "3rd.RemoteConfig.DI": "1.0.0",

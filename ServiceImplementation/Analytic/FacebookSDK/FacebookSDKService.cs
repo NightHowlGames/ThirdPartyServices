@@ -1,4 +1,4 @@
-#if THEONE_FACEBOOK_SDK
+#if UNIT_FACEBOOK_SDK
 namespace ServiceImplementation.Analytic.FacebookSDK
 {
     using Facebook.Unity;

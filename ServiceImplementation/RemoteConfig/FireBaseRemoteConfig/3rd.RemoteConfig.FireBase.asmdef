@@ -6,7 +6,7 @@
     "3rd.RemoteConfig",
     "GameFoundation.DI",
     "3rd.Configs",
-    "TheOne.Logging",
+    "UniT.Logging",
     "UniTask"
   ]
 }

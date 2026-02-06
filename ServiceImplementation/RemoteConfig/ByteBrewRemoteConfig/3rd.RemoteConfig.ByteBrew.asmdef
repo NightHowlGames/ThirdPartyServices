@@ -8,7 +8,7 @@
     "GameFoundation.Signals",
     "GameFoundation.Utilities",
     "GameFoundation.DI",
-    "TheOne.Logging"
+    "UniT.Logging"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

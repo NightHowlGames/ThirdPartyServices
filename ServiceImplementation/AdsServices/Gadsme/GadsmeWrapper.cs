@@ -79,7 +79,7 @@ namespace ServiceImplementation.AdsServices.Gads
             GadsmeSDK.Init();
             this.logger.Info("Initialize SDK");
 
-            #if THEONE_ADS_DEBUG
+            #if UNIT_ADS_DEBUG
             GadsmePreferences.P23.forceSandbox = true;
             #else
             GadsmePreferences.P23.forceSandbox = false;

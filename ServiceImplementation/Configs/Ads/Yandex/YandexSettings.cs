@@ -14,7 +14,7 @@
 
         public CrossPlatformValue BannerAdId
         {
-            #if THEONE_ADS_DEBUG
+            #if UNIT_ADS_DEBUG
             get => new ("demo-banner-yandex","demo-banner-yandex");
             #else
             get => this.mBannerAdId;
@@ -24,7 +24,7 @@
 
         public CrossPlatformValue InterstitialAdId
         {
-            #if THEONE_ADS_DEBUG
+            #if UNIT_ADS_DEBUG
             get => new ("demo-interstitial-yandex","demo-interstitial-yandex");
             #else
             get => this.mInterstitialAdId;
@@ -34,7 +34,7 @@
 
         public CrossPlatformValue RewardedAdId
         {
-            #if THEONE_ADS_DEBUG
+            #if UNIT_ADS_DEBUG
             get => new ("demo-rewarded-yandex","demo-rewarded-yandex");
             #else
             get => this.mRewardedAdId;
@@ -44,7 +44,7 @@
 
         public CrossPlatformValue AoaAdId
         {
-            #if THEONE_ADS_DEBUG
+            #if UNIT_ADS_DEBUG
             get => new ("demo-appopenad-yandex","demo-appopenad-yandex");
             #else
             get => this.mAoaAdId;

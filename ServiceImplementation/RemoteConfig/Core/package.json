@@ -1,15 +1,15 @@
 {
-  "name": "com.theone.3rd.remoteconfig.core",
+  "name": "com.UniT.3rd.remoteconfig.core",
   "displayName": "Third Party Remote Config Core",
   "version": "1.0.0",
   "description": "core package for remote config service",
   "author": {
-    "name": "TheOne - 3rd",
-    "email": "tuha@the1studio.org"
+    "name": "UniT - 3rd",
+    "email": "duycuong2k3@gmail.com"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/The1Studio/3rdRemoteConfigCore.git"
+    "url": "https://github.com/"
   },
   "dependencies": {
   },
